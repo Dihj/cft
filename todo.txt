@@ -1,25 +1,23 @@
 #to do
 
 in dowload.py:
+- add target period to file name for forecast data - check
 - catch errors in download when data are not availble or iridl is down
 - fix CanSips download error
 - implement stop button
 
 
 in forecast.py
-- divergent scale for probability maps
+- divergent scale for probability maps - centered on 0.33
 - save tercile and cem categories as geojson
 - include skill-masked plots
-- include more skill measures
-- add annotations to maps and figures
 
 - save model configuration to output directory
 
 - test data ingestion errors for csv files
-- add missing value to gui
-- add category of predictand to gui
 - add "too dry to forecast" colour to plots
 - limit CCA forecast for less than X locations/zones
+
 
 # wish list:
 - implement download from CDS, and if not - implement download of CDS data from IRIDL - both require users to set up account

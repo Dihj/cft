@@ -5,7 +5,6 @@ import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 from matplotlib.patches import Patch
 import xarray as xr
-
 from scipy.stats import pearsonr
 
 from sklearn.preprocessing import StandardScaler
@@ -28,6 +27,8 @@ from rasterstats import zonal_stats
 
 import matplotlib.colors as colors
 
+from matplotlib.offsetbox import AnnotationBbox, OffsetImage
+
 import cartopy.crs as ccrs
 
 from pathlib import Path
@@ -45,7 +46,9 @@ from PyQt5.QtWidgets import QFileDialog
 import re
 import unicodedata
 
-seasons = ['JFM', 'FMA', 'MAM', 'AMJ', 'MJJ', 'JJA', 'JAS', 'ASO', 'SON', 'OND', 'NDJ', 'DJF']
+crossvalidator_config_file=Path("dictionaries", "crossvalidator_config.json")
+regressor_config_file=Path("dictionaries", "regressor_config.json")
+preprocessor_config_file=Path("dictionaries", "preprocessor_config.json")
 
 months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
@@ -67,33 +70,68 @@ cem2num={"below":0,"normal-to-below":1,"normal-to-above":2,"above":3}
 num2cem={0:"below",1:"normal-to-below",2:"normal-to-above",3:"above"}
 
 
-tgtSeass=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec","Jan-Mar","Feb-Apr","Mar-May","Apr-Jun","May-Jul","Jun-Aug","Jul-Sep","Aug-Oct","Sep-Nov","Oct-Dec","Nov-Jan","Dec-Feb"]
 
-srcMons=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]
+tgtSeass=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec","Jan-Mar","Feb-Apr","Mar-May","Apr-Jun","May-Jul","Jun-Aug","Jul-Sep","Aug-Oct","Sep-Nov","Oct-Dec","Nov-Jan","Dec-Feb"]
 
 timeAggregations={"sum","mean"}
 predictandCats=["rainfall","temperature", "other"]
 
-crossvalidator_config={
-    "KF":["K-Fold",{"n_splits":5}],
-    "LOO":["Leave One Out",{}],
-}
+
+#crossvalidator_config={
+#    "KF":["K-Fold",{"n_splits":5}],
+#    "LOO":["Leave One Out",{}],
+#}
+
+
+def readFunctionConfig():
+    
+    gl.crossvalidator_config=readConfigFile(crossvalidator_config_file)
+    if gl.crossvalidator_config is None:
+        return
+
+    gl.regressor_config=readConfigFile(regressor_config_file)
+    if gl.regressor_config is None:
+        return
+
+    gl.preprocessor_config=readConfigFile(preprocessor_config_file)
+    if gl.preprocessor_config is None:
+        return
+    
+    return True
+    
+def readConfigFile(file):
+    showMessage("Reading config file {}".format(file))
+    if not os.path.exists(file):
+        showMessage("Config file {} is missing. Please download the file from github and put it in the right folder.".format(file), "ERROR")
+        return
+    else:
+        try:
+            with open(file, "r") as inpf:
+                config=json.load(inpf)
+        except:
+            showMessage("Config file {} appears to be corrupted. Please download the file from github and put it in the right folder.".format(file), "ERROR")
+            return
+        return config
+
+    
+
 
 #can be read from json - potentially editable by user
-regressor_config = {
-    "OLS":["Linear regression", {}],
-    "Lasso":["Lasso regression", {'alpha': 0.01}],
-    "Ridge":["Ridge regression", {'alpha': 1.0}],
-    "RF":["Random Forest", {'n_estimators': 100, 'max_depth': 5}],
-    "MLP":["Multi Layer Perceptron", {'hidden_layer_sizes': (50, 25), 'max_iter': 1000, 'random_state': 0}],
-    "Trees":["Decision Trees", {'max_depth': 2}]
-}
+#regressor_config = {
+#    "OLS":["Linear regression", {}],
+#    "Lasso":["Lasso regression", {'alpha': 0.01}],
+#    "Ridge":["Ridge regression", {'alpha': 1.0}],
+#    "RF":["Random Forest", {'n_estimators': 100, 'max_depth': 5}],
+#    "MLP":["Multi Layer Perceptron", {'hidden_layer_sizes': (50, 25), 'max_iter': 1000, 'random_state': 0}],
+#    "Trees":["Decision Trees", {'max_depth': 2}]
+#}
 
-preprocessor_config={
-    "PCR":["Principal Component Regression (PCR)", {}],
-    "CCA":["Canonical Corelation Analysis (CCA)", {}],
-    "NONE":["No preprocessing", {}],
-}
+
+#preprocessor_config={
+#    "PCR":["Principal Component Regression (PCR)", {}],
+#    "CCA":["Canonical Corelation Analysis (CCA)", {}],
+#    "NONE":["No preprocessing", {}],
+#}
 
 
 def showMessage(_message, _type="RUNTIME"):
@@ -284,9 +322,12 @@ def readPredictandCsv(csvfile):
     return dat, geoData
         
     
-def readPredictor(_model):
+def readPredictor():
     
-    predFile, predVar, predCode=gl.config["predictorFiles"][_model]
+    predFile=gl.config["predictorFileName"]
+    predVar=gl.config["predictorVar"]
+    predCode=gl.config["predictorCode"]
+    
     if predFile=="":
         showMessage("predictor file not defined","ERROR")
         return
@@ -314,6 +355,7 @@ def readPredictor(_model):
         if predictor is None:
             return
 
+        geodata=predictor[0,:]
         #preparing to convert xarray to pandas
         predictor=predictor.stack(location=("lat", "lon"))
 
@@ -326,6 +368,7 @@ def readPredictor(_model):
 
     else:
         predictor=readPredictorCsv(predFile)
+        geodata=None
 
         
     #making sure requested month is in the data
@@ -359,7 +402,7 @@ def readPredictor(_model):
     predictor=predictor.astype("float")
     
     showMessage("done\n", "INFO")
-    return predictor
+    return predictor,geodata
 
 
 def readPredictand():
@@ -620,6 +663,8 @@ def getLeadTime():
     gl.predictorDate=srcDate
     
     return leadTime
+
+
 
 def getHcstData(_predictand,_predictor):
     
@@ -898,6 +943,54 @@ def effective_interest_rate(forecast_probs, obs):
     
     return mean_info_gain
 
+
+
+def groc_score(probs, obs):
+    """
+    Calculate the Generalized ROC (GROC) skill score.
+    
+    Parameters
+    ----------
+    probs : np.ndarray
+        Array of forecast probabilities with shape (N, C),
+        where N = number of forecasts, C = number of categories.
+    obs : np.ndarray
+        Array of observed categories with shape (N,), 
+        integers in [0, C-1].
+        
+    Returns
+    -------
+    groc : float
+        GROC value (0–1).
+    groc_skill : float
+        GROC skill score (-1–1).
+    """
+    N, C = probs.shape
+    
+    scores = []
+    
+    for i in range(N):
+        p_obs = probs[i, obs[i]]
+        
+        for c in range(C):
+            if c == obs[i]:
+                continue
+            p_other = probs[i, c]
+            
+            if p_obs > p_other:
+                scores.append(1.0)
+            elif p_obs == p_other:
+                scores.append(0.5)
+            else:
+                scores.append(0.0)
+    
+    groc = np.mean(scores)
+    groc_skill = 2 * (groc - 0.5)  # normalize to [-1, 1]
+    
+    return groc
+
+
+
 def getSkill(_prob_hcst,_det_hcst,_predictand_hcst,_obs_tercile):
     #iterating through stations/locations
     index=["correlation",
@@ -910,7 +1003,9 @@ def getSkill(_prob_hcst,_det_hcst,_predictand_hcst,_obs_tercile):
        "ignorance", 
        "hss",
        "2afc",
-       "brier", "effintrate"]
+       "brier", 
+       "effintrate",
+       "groc"]
 
     allscores=[]
     for entry in _det_hcst.columns:
@@ -945,26 +1040,29 @@ def getSkill(_prob_hcst,_det_hcst,_predictand_hcst,_obs_tercile):
         phcst=phcst.loc[:,["below","normal","above"]].values
 
         #calculate rpss
-        rpss=rpss_score(phcst, pclim,obsterc)
+        rpss=np.round(rpss_score(phcst, pclim,obsterc),2)
 
         # ignorance score
-        ignorance=ignorance_score(phcst,obsterc)
+        ignorance=np.round(ignorance_score(phcst,obsterc),2)
         
-        hss=heidke_skill_score(phcst,obsterc)
+        hss=np.round(heidke_skill_score(phcst,obsterc),2)
 
-        twoafc=two_afc_multicategory(phcst, obsterc)
+        twoafc=np.round(two_afc_multicategory(phcst, obsterc),2)
         
-        brier=brier_skill_score(phcst, obsterc)
+        brier=np.round(brier_skill_score(phcst, obsterc),2)
         
-        effintrate=effective_interest_rate(phcst,obsterc)
+        effintrate=np.round(effective_interest_rate(phcst,obsterc),2)
+        
+        groc=np.round(groc_score(phcst,obsterc),2)
         
         # reliability diagram - plot
 
-        entryscores=pd.Series([cor,mape,rmse,roc_score_above, roc_score_normal,roc_score_below, rpss, ignorance, hss, twoafc, brier, effintrate], index=index)
+        entryscores=pd.Series([cor,mape,rmse,roc_score_above, roc_score_normal,roc_score_below, rpss, ignorance, hss, twoafc, brier, effintrate, groc], index=index)
 
         allscores.append(entryscores)
+        
     scores=pd.concat(allscores, axis=1, keys=_det_hcst.columns)
-    scores.index.name = "category"        
+    scores.index.name = "category"
     return(scores)
 
 
@@ -994,7 +1092,7 @@ def populateGui():
     #source/predictand month
     gl.window.comboBox_srcmon.clear()
     #gl.window.comboBox_srcmon.addItem("", "")
-    for key in srcMons:
+    for key in months:
         gl.window.comboBox_srcmon.addItem(key, key)
 
     #temporal aggregation
@@ -1008,30 +1106,29 @@ def populateGui():
     for item in predictandCats:
         gl.window.comboBox_predictandcategory.addItem(item, item)
         
-    for model in range(5):
-        comboName="comboBox_preproc{}".format(model)
-        if hasattr(gl.window, comboName):
-            item=getattr(gl.window, comboName, None)
-            item.clear()
-            #item.addItem("", "")
-            for key in preprocessor_config:
-                item.addItem(preprocessor_config[key][0], key)
-            
-        comboName="comboBox_regression{}".format(model)
-        if hasattr(gl.window, comboName):
-            item=getattr(gl.window, comboName, None)
-            item.clear()
-            #item.addItem("", "")
-            for key in regressor_config:
-                item.addItem(regressor_config[key][0], key)
-                
-        comboName="comboBox_crossval{}".format(model)
-        if hasattr(gl.window, comboName):
-            item=getattr(gl.window, comboName, None)
-            item.clear()
-            #item.addItem("", "")
-            for key in crossvalidator_config:
-                item.addItem(crossvalidator_config[key][0], key)
+    comboName="comboBox_preproc"
+    if hasattr(gl.window, comboName):
+        item=getattr(gl.window, comboName, None)
+        item.clear()
+        #item.addItem("", "")
+        for key in gl.preprocessor_config:
+            item.addItem(gl.preprocessor_config[key][0], key)
+
+    comboName="comboBox_regression"
+    if hasattr(gl.window, comboName):
+        item=getattr(gl.window, comboName, None)
+        item.clear()
+        #item.addItem("", "")
+        for key in gl.regressor_config:
+            item.addItem(gl.regressor_config[key][0], key)
+
+    comboName="comboBox_crossval"
+    if hasattr(gl.window, comboName):
+        item=getattr(gl.window, comboName, None)
+        item.clear()
+        #item.addItem("", "")
+        for key in gl.crossvalidator_config:
+            item.addItem(gl.crossvalidator_config[key][0], key)
 
                 
     # read data from config
@@ -1045,53 +1142,51 @@ def populateGui():
     gl.window.comboBox_predictandcategory.setCurrentText(gl.config['predictandCategory'])
     gl.window.lineEdit_predictandmissingvalue.setText(str(gl.config['predictandMissingValue']))
 
-    for model in range(5):
-        for var in ["minLon","maxLon","minLat","maxLat"]:
-            itemName="lineEdit_{}{}".format(var, model)
-            if hasattr(gl.window, itemName):
-                item=getattr(gl.window, itemName, None)
-                item.setText(str(gl.config['predictorExtents'][model][var]))
-        
-        itemName="comboBox_crossval{}".format(model)
+    for var in ["minLon","maxLon","minLat","maxLat"]:
+        itemName="lineEdit_{}".format(var)
         if hasattr(gl.window, itemName):
             item=getattr(gl.window, itemName, None)
-            setval=crossvalidator_config[gl.config["crossval"][model]][0]
+            item.setText(str(gl.config['predictorExtents'][var]))
+
+    itemName="comboBox_crossval"
+    if hasattr(gl.window, itemName):
+        item=getattr(gl.window, itemName, None)
+        setval=gl.crossvalidator_config[gl.config["crossval"]][0]
+        item.setCurrentText(setval)
+
+    itemName="comboBox_regression"
+    if hasattr(gl.window, itemName):
+        item=getattr(gl.window, itemName, None)
+        setval=gl.regressor_config[gl.config["regression"]][0]
+        item.setCurrentText(setval)
+
+    itemName="comboBox_preproc"
+    if hasattr(gl.window, itemName):
+        item=getattr(gl.window, itemName, None)
+        setval=gl.preprocessor_config[gl.config["preproc"]][0]
+        item.setCurrentText(setval)
+
+    itemName="lineEdit_predictorfile"
+    if hasattr(gl.window, itemName):
+        item=getattr(gl.window, itemName, None)
+        predictorfile=gl.config["predictorFileName"]
+        item.setText(predictorfile)
+        variables=readVariablesFile(predictorfile)
+
+    itemName="comboBox_predictorvar"
+    if hasattr(gl.window, itemName):
+        item=getattr(gl.window, itemName, None)
+        setval=gl.config["predictorVar"]
+        #remove once (if) function to read file is implemented
+        item.addItems(variables)
+        if setval in variables:
             item.setCurrentText(setval)
 
-        itemName="comboBox_regression{}".format(model)
-        if hasattr(gl.window, itemName):
-            item=getattr(gl.window, itemName, None)
-            setval=regressor_config[gl.config["regression"][model]][0]
-            item.setCurrentText(setval)
-            
-        itemName="comboBox_preproc{}".format(model)
-        if hasattr(gl.window, itemName):
-            item=getattr(gl.window, itemName, None)
-            setval=preprocessor_config[gl.config["preproc"][model]][0]
-            item.setCurrentText(setval)
-
-        itemName="lineEdit_predictorfile{}".format(model)
-        if hasattr(gl.window, itemName):
-            item=getattr(gl.window, itemName, None)
-            predictorfile=gl.config["predictorFiles"][model][0]
-            item.setText(predictorfile)
-            variables=readVariablesFile(predictorfile)
-    
-        itemName="comboBox_predictorvar{}".format(model)
-        if hasattr(gl.window, itemName):
-            item=getattr(gl.window, itemName, None)
-            setval=gl.config["predictorFiles"][model][1]
-            #remove once (if) function to read file is implemented
-            item.addItems(variables)
-            if setval in variables:
-                item.setCurrentText(setval)
-                
-        itemName="lineEdit_predictorcode{}".format(model)
-        if hasattr(gl.window, itemName):
-            item=getattr(gl.window, itemName, None)
-            setval=gl.config["predictorFiles"][model][2]
-            #remove once (if) function to read file is implemented
-            item.setText(setval)
+    itemName="lineEdit_predictorcode"
+    if hasattr(gl.window, itemName):
+        item=getattr(gl.window, itemName, None)
+        setval=gl.config["predictorCode"]
+        item.setText(setval)
     
     gl.window.lineEdit_predictandfile.setText(gl.config['predictandFileName'])
     #for the time being - have to have a function that reads this file and populates variable list
@@ -1120,26 +1215,26 @@ def makeConfig():
     gl.config['rootDir'] = "../test_data"
 
     gl.config['predictorYear'] = 2025
-    gl.config['predictorMonth'] = "Jun"
+    gl.config['predictorMonth'] = "Jul"
 
-    #gl.config['fcstTargetSeas']="Mar-May"
-    gl.config['fcstTargetSeas']="Dec"
+    gl.config['fcstTargetSeas']="Dec-Feb"
     gl.config['fcstTargetYear']=2025
 
     gl.config["climEndYr"]=2015
     gl.config["climStartYr"]=1994
 
-    gl.config["predictorExtents"]=[{'minLat':-60,'maxLat':60,'minLon':-180,'maxLon':180},
-                                  ]
+    gl.config["predictorExtents"]={'minLat':-60,'maxLat':60,'minLon':-180,'maxLon':180}
+    
 
-
-    gl.config['predictorFiles'] = [["./data/SST_Jun_1960-2025.nc","sst", "SST"]]
-    gl.config['crossval']=["KF"]
-    gl.config['preproc']=["PCR"]
-    gl.config['regression']=["OLS"]
+    gl.config['predictorFileName'] = "/work/code/csc/cft/download_test/SST_ERSSTv5_IRIDL_mon_198107-202507.nc"
+    gl.config['predictorVar'] = "sst"
+    gl.config['predictorCode'] = "SST"
+    gl.config['crossval']="KF"
+    gl.config['preproc']="PCR"
+    gl.config['regression']="OLS"
 
     gl.config['timeAggregation']="sum"
-    gl.config["predictandFileName"]="./data/pr_mon_chirps-v2.0_198101-202308.nc"
+    gl.config["predictandFileName"]="/work/code/csc/cft/sadc_cft_current/example_data/pr_mon_chirps-v2.0_198101-202308.nc"
     gl.config["predictandVar"]="PRCPTOT"
     gl.config["predictandCategory"]="rainfall"
     gl.config["predictandMissingValue"]=-999
@@ -1148,7 +1243,7 @@ def makeConfig():
     gl.config["zonesAttribute"]="ID"
     gl.config["zonesAggregate"]=True
 
-    gl.config["overlayFile"]="data/Botswana.geojson"
+    gl.config["overlayFile"]=""
     
     
     
@@ -1175,55 +1270,44 @@ def readGUI():
     gl.config["overlayFile"]=gl.window.lineEdit_overlayfile.text()
 
     
-    gl.config["predictorExtents"]=[]
-    for model in range(5):
-        temp={}
-        for var in ["minLon","maxLon","minLat","maxLat"]:
-            itemName="lineEdit_{}{}".format(var, model)
-            if hasattr(gl.window, itemName):
-                item=getattr(gl.window, itemName, None)
-                try:
-                    temp[var]=float(item.text())
-                except:
-                    showMessage("Lat Lon values have to be numeric", "ERROR")
-                    return
-        if len(temp)==4:
-            gl.config["predictorExtents"].append(temp)
+    temp={}
+    for var in ["minLon","maxLon","minLat","maxLat"]:
+        itemName="lineEdit_{}".format(var)
+        if hasattr(gl.window, itemName):
+            item=getattr(gl.window, itemName, None)
+            try:
+                temp[var]=float(item.text())
+            except:
+                showMessage("Lat Lon values have to be numeric", "ERROR")
+                return
+    if len(temp)==4:
+        gl.config["predictorExtents"]=temp
     
 
-    gl.config["predictorFiles"]=[]
-    for model in range(5):
-        temp=[]
-        itemName="lineEdit_predictorfile{}".format(model)
-        if hasattr(gl.window, itemName):
-            temp.append(getattr(gl.window, itemName, None).text())
-        itemName="comboBox_predictorvar{}".format(model)
-        if hasattr(gl.window, itemName):
-            temp.append(getattr(gl.window, itemName, None).currentText())
-        itemName="lineEdit_predictorcode{}".format(model)
-        if hasattr(gl.window, itemName):
-            temp.append(getattr(gl.window, itemName, None).text())
-            
-        if len(temp)==3:
-            gl.config["predictorFiles"].append(temp)
+    temp=[]
+    itemName="lineEdit_predictorfile"
+    if hasattr(gl.window, itemName):
+        gl.config["predictorFileName"]=getattr(gl.window, itemName, None).text()
+        
+    itemName="comboBox_predictorvar"
+    if hasattr(gl.window, itemName):
+        gl.config["predictorVar"]=getattr(gl.window, itemName, None).currentText()
+        
+    itemName="lineEdit_predictorcode"
+    if hasattr(gl.window, itemName):
+        gl.config["predictorCode"]=getattr(gl.window, itemName, None).text()
 
-    gl.config["crossval"]=[]
-    for model in range(5):
-        itemName="comboBox_crossval{}".format(model)
-        if hasattr(gl.window, itemName):
-            gl.config["crossval"].append(getattr(gl.window, itemName, None).currentData())
+    itemName="comboBox_crossval"
+    if hasattr(gl.window, itemName):
+        gl.config["crossval"]=getattr(gl.window, itemName, None).currentData()
                 
-    gl.config["preproc"]=[]
-    for model in range(5):
-        itemName="comboBox_preproc{}".format(model)
-        if hasattr(gl.window, itemName):
-            gl.config["preproc"].append(getattr(gl.window, itemName, None).currentData())
+    itemName="comboBox_preproc"
+    if hasattr(gl.window, itemName):
+        gl.config["preproc"]=getattr(gl.window, itemName, None).currentData()
                 
-    gl.config["regression"]=[]
-    for model in range(5):
-        itemName="comboBox_regression{}".format(model)
-        if hasattr(gl.window, itemName):
-            gl.config["regression"].append(getattr(gl.window, itemName, None).currentData())
+    itemName="comboBox_regression"
+    if hasattr(gl.window, itemName):
+        gl.config["regression"]=getattr(gl.window, itemName, None).currentData()
 
             
     #derived variables
@@ -1506,6 +1590,19 @@ colormaps={"percent_normal":{
         "whitelev":[],
         "tick_labels":None,
         "extend":"neither"},
+    "groc":{
+        "categorized":True,
+        "nlev":11,
+        "title":"Generalized ROC score\n(hindcast)",
+        "cmap":plt.cm.RdBu,
+        "vmin":0,
+        "vmax":1,
+        "cbar_label":"score",
+        "levels":None,
+        "whitelev":[],
+        "tick_labels":None,
+        "extend":"neither"},
+           
     "rpss":{
         "categorized":True,
         "nlev":11,
@@ -1698,8 +1795,16 @@ def nice_max(x):
     return lims    
     
     
-def plotMaps(_scores, _geoData, _geoData0,_figuresDir, _forecastID, _zonesVector, _overlayVector=None):
+def plotMaps(_scores, _geoData, _figuresDir, _forecastID, _zonesVector, _overlayVector=None):
+    annotation="Forecast for: {} {}".format(gl.config['fcstTargetSeas'], gl.config['fcstTargetYear'])
+    annotation+="\nIssued in: {} {}".format(gl.config['predictorMonth'], gl.config['predictorYear'])
+    annotation+="\nPredictor: {}".format(Path(gl.config["predictorFileName"]).stem)
+    annotation+="\nPredictand: {}".format(Path(gl.config["predictandFileName"]).stem)
+    annotation+="\nClimatological period: {}-{}".format(gl.config['climStartYr'], gl.config['climEndYr'])
+    
+        
     if gl.targetType=="grid":
+        #no need to use geodata as _scores unstacks to proper xarray
         scoresxr=_scores.unstack().to_xarray().transpose("category","lat","lon")
         for score in scoresxr.category.values:
             outfile=Path(_figuresDir,"{}_{}_{}.jpg".format(gl.config['predictandVar'], score, _forecastID))
@@ -1756,6 +1861,10 @@ def plotMaps(_scores, _geoData, _geoData0,_figuresDir, _forecastID, _zonesVector
                 _overlayVector.boundary.plot(ax=pl, color='black', linewidth=0.3)
                 
             pl.set_title(title)
+            
+#            ab = AnnotationBbox(m, (0.99, 0.99), xycoords=pl.transAxes, box_alignment=(1,1), frameon=False)
+#            pl.add_artist(ab)
+            pl.text(0,-0.01,annotation,fontsize=6, transform=pl.transAxes, va="top")
             
             plt.subplots_adjust(right=0.8)
             plt.savefig(outfile)
@@ -1821,6 +1930,9 @@ def plotMaps(_scores, _geoData, _geoData0,_figuresDir, _forecastID, _zonesVector
 
             if not _overlayVector is None:
                 _overlayVector.boundary.plot(ax=pl, color='black', linewidth=0.3)
+                
+            pl.text(0,-0.01,annotation,fontsize=6, transform=pl.transAxes, va="top")
+                
             plt.subplots_adjust(right=0.8)                
             plt.savefig(outfile)
             plt.close()
@@ -1888,6 +2000,8 @@ def plotMaps(_scores, _geoData, _geoData0,_figuresDir, _forecastID, _zonesVector
                 _overlayVector.boundary.plot(ax=pl, color='black', linewidth=0.3)
                 
             pl.set_title(title)
+            
+            pl.text(0,-0.01,annotation,fontsize=6, transform=pl.transAxes, va="top")
                 
             plt.subplots_adjust(right=0.8)
             plt.savefig(outfile)
@@ -2199,7 +2313,7 @@ def writeOutput(_data, _outputfile):
     return    
 
 
-def plotDiagsCCA(_regressor, predictorhcst, predictandhcst, _diagsdir, _forecastid):
+def plotDiagsCCA(_regressor, predictorhcst, predictandhcst, _geodata, _diagsdir, _forecastid):
     #plotting predictor scores
     canpatX=_regressor.can_pattern_X 
 
@@ -2210,8 +2324,9 @@ def plotDiagsCCA(_regressor, predictorhcst, predictandhcst, _diagsdir, _forecast
         outfile=Path(_diagsdir,"cannonical-pattern_predictor_{}_{}.jpg".format(pc,_forecastid))
         #showMessage("plotting {}".format(outfile))
 
-        fig=plt.figure(figsize=(5,5))
-        pl=fig.add_subplot(1,1,1)
+        fig=plt.figure(figsize=(10,3))
+
+        pl=fig.add_subplot(1,1,1, projection=ccrs.PlateCarree())
 
         canpatX[pc].plot(ax=pl)
         pl.set_title("Predictor's {} pattern \n{}".format(pc, _forecastid))
@@ -2229,8 +2344,9 @@ def plotDiagsCCA(_regressor, predictorhcst, predictandhcst, _diagsdir, _forecast
             outfile=Path(_diagsdir,"cannonical-pattern_predictand_{}_{}.jpg".format(pc,_forecastid))
             #showMessage("plotting {}".format(outfile))
 
-            fig=plt.figure(figsize=(5,5))
-            pl=fig.add_subplot(1,1,1)
+            fig=plt.figure(figsize=(10,3))
+
+            pl=fig.add_subplot(1,1,1, projection=ccrs.PlateCarree())
 
             canpatY[pc].plot(ax=pl)
             pl.set_title("Predictand's {} pattern \n{}".format(pc, _forecastid))
@@ -2287,7 +2403,7 @@ def plotDiagsCCA(_regressor, predictorhcst, predictandhcst, _diagsdir, _forecast
     
     
     
-def plotDiagsPCR(_regressor, predictorhcst, predictandhcst, _diagsdir, _forecastid):
+def plotDiagsPCR(_regressor, predictorhcst, predictandhcst, _geodata, _diagsdir, _forecastid):
     #plotting predictor scores
     scores=_regressor.scores
     scores=pd.DataFrame(scores, index=predictandhcst.index, columns=["PC{}".format(x+1) for x in range(scores.shape[1])])
@@ -2307,18 +2423,18 @@ def plotDiagsPCR(_regressor, predictorhcst, predictandhcst, _diagsdir, _forecast
 
     #plotting loadings
     loadings=_regressor.loadings
-    loadings.shape
 
     loadings=pd.DataFrame(loadings, index=predictorhcst.columns, columns=["PC{}".format(x+1) for x in range(loadings.shape[1])])
     loadings=loadings.to_xarray().sortby("lat").sortby("lon")
 
-
+    
     for pc in loadings.data_vars:
         outfile=Path(_diagsdir,"{}-loadings_predictand_{}.jpg".format(pc,_forecastid))
         #showMessage("plotting {}".format(outfile))
 
-        fig=plt.figure(figsize=(5,5))
-        pl=fig.add_subplot(1,1,1)
+        fig=plt.figure(figsize=(10,3))
+        
+        pl=fig.add_subplot(1,1,1, projection=ccrs.PlateCarree())
 
         loadings[pc].plot(ax=pl)
         pl.set_title("{} loadings \n{}".format(pc, _forecastid))
@@ -2501,42 +2617,41 @@ def checkInputs():
             showMessage("overlay file does not exist", "ERROR")
             return
         
-    for model in range(len(gl.config['predictorFiles'])):
-        file=gl.config['predictorFiles'][model][0]
-        var=gl.config['predictorFiles'][model][1]
-        code=gl.config['predictorFiles'][model][2]
-        
-        extents=gl.config['predictorExtents'][model]
-        south=extents["minLat"]
-        north=extents["maxLat"]
-        west=extents["minLon"]
-        east=extents["maxLon"]        
-        
-        if file=="":
-            showMessage("predictor file cannot be empty", "ERROR")
-            return
-        elif not os.path.exists(file):
-            showMessage("predictor file does not exist", "ERROR")
-            return
-        
-        if var=="":
-            showMessage("predictor variable cannot be empty. Please repeat selection of predictor file", "ERROR")
+    file=gl.config['predictorFileName']
+    var=gl.config['predictorVar']
+    code=gl.config['predictorCode']
+
+    extents=gl.config['predictorExtents']
+    south=extents["minLat"]
+    north=extents["maxLat"]
+    west=extents["minLon"]
+    east=extents["maxLon"]        
+
+    if file=="":
+        showMessage("predictor file cannot be empty", "ERROR")
+        return
+    elif not os.path.exists(file):
+        showMessage("predictor file does not exist", "ERROR")
+        return
+
+    if var=="":
+        showMessage("predictor variable cannot be empty. Please repeat selection of predictor file", "ERROR")
+        return
+
+    if code=="":
+        showMessage("predictor code cannot be empty. Please repeat selection of predictor file or add code to the input box manually", "ERROR")
+        return
+
+    check=[]
+    for _x in [east,west,south,north]:
+        check.append(is_number(_x))
+    if not all(check):
+            showMessage("\nLat and Lon values should be numeric.", "ERROR")
             return
 
-        if code=="":
-            showMessage("predictor code cannot be empty. Please repeat selection of predictor file or add code to the input box manually", "ERROR")
-            return
-
-        check=[]
-        for _x in [east,west,south,north]:
-            check.append(is_number(_x))
-        if not all(check):
-                showMessage("\nLat and Lon values should be numeric.", "ERROR")
-                return
-
-        check=[float(east)>float(west), float(north)>float(south)]
-        if not all(check):
-                showMessage("\nLat and Lon values should be numeric.", "ERROR")
-                return    
+    check=[float(east)>float(west), float(north)>float(south)]
+    if not all(check):
+            showMessage("\nLat and Lon values should be numeric.", "ERROR")
+            return    
         
     return True

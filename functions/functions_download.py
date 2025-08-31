@@ -253,7 +253,7 @@ def downloadPredictand():
         showMessage("requesting date range: {}".format(daterange))
 
         
-        outfile=Path(_downloadsdir,"{}_{}_{}-{}.nc".format(_predictandcode, basetime, first_date.strftime("%Y%m"), last_date.strftime("%Y%m")))
+        outfile=Path(_downloadsdir,"{}_{}_{}-{}.nc".format(_predictandcode, gl.config['fcstTargetSeas'], first_date.strftime("%Y%m"), last_date.strftime("%Y%m")))
 
     
         if _overwrite is False:
@@ -546,6 +546,8 @@ def downloadFcstPredictor():
     _source=_predictorcode.split("_")[-1]
     
     _predictortime=pd.to_datetime("{}-{}-01".format(_predictoryear, _predictormonth))
+    
+    #this accounts for difference between predictor time and dynamical forecast time 
     _forecasttime=_predictortime+pd.offsets.MonthBegin(1)
     _forecastyear=_forecasttime.year
     _forecastmon=months[_forecasttime.month-1]
@@ -562,7 +564,7 @@ def downloadFcstPredictor():
     leadtime=getLeadTime()
 
 
-    #this is with respect to forecast month
+    #this is with respect to forecast month, thus -1, and takes into account IRIDL notation, thus +0.5
     leadtimestart=leadtime-1+0.5
 
     if len(gl.config['fcstTargetSeas'])==3:
@@ -592,7 +594,7 @@ def downloadFcstPredictor():
         showMessage("requesting date range: {}".format(daterange))
 
 
-        outfile=Path(_downloadsdir,"{}_{}_{}-{}.nc".format(_predictorcode, basetime, first_date.strftime("%Y%m"), last_date.strftime("%Y%m")))
+        outfile=Path(_downloadsdir,"{}_{}_{}-{}.nc".format(_predictorcode, gl.config['fcstTargetSeas'], first_date.strftime("%Y%m"), last_date.strftime("%Y%m")))
         
         if _overwrite is False:
             if os.path.exists(outfile):

@@ -39,15 +39,12 @@ gl.configFile="forecast.json"
 #this should be read from a "deep config json"
 gl.maxLeadTime=6
 
-#this should be added to gui
-gl.predictandCategory="rainfall"
-gl.predictandMissingValue=-999
 
-
-def computeModel(model):
+def computeModel():
     
     #=======================================================================================================
     #preliminaries
+    
     
     #read config from gui
     check=readGUI()
@@ -76,7 +73,7 @@ def computeModel(model):
         return
     
     #reading predictors data
-    predictor=readPredictor(model)
+    predictor,geoDataPredictor=readPredictor()
     if predictor is None:
         showMessage("Predictor could not be read, stopping early.", "ERROR")
         return
@@ -87,6 +84,8 @@ def computeModel(model):
         showMessage("Predictand could not be read, stopping early.", "ERROR")
         return
     
+    # 0 denotes data as read from input files, when transformed later, these are kept for later use 
+    # predictand is Pandas DataFrame, geoData is empty geoDataFrame
     predictand0, geoData0=result
     
     #aggregating to zones if required
@@ -102,12 +101,13 @@ def computeModel(model):
         #retaining just the attribute as index
         zonesVector=zonesVector[[gl.config["zonesAttribute"], 'geometry']].set_index(gl.config["zonesAttribute"])
         
-        
-        showMessage("Aggregating data to zones read from {} ...".format(gl.config["zonesFile"]))
+        # calling the aggregation function   
         predictand,geoData=aggregatePredictand(predictand0, geoData0, zonesVector)
+        
+        
         #checking if result has data
-        if predictand.dropna().empty:
-            showMessage("Predictand could not be aggregates to zones. Make sure there is overlap between predictand data and zones vector. Stopping early.", "ERROR")
+        if predictand.dropna(axis=1).empty:
+            showMessage("Predictand could not be aggregated to zones. Make sure there is overlap between predictand data and zones vector. Stopping early.", "ERROR")
             return
             
     else:
@@ -120,7 +120,11 @@ def computeModel(model):
     if gl.config["overlayFile"] != "":
         if os.path.exists(gl.config["overlayFile"]):
             overlayVector=gpd.read_file(gl.config["overlayFile"])
-
+            
+            
+    #=======================================================================================================
+    #preprocessing
+            
     #defining target date for forecast. If seasonal - then this is the first month of the season.
     fcstTgtDate=pd.to_datetime("01 {} {}".format(gl.config['fcstTargetSeas'][0:3], gl.config['fcstTargetYear']))
     
@@ -143,7 +147,7 @@ def computeModel(model):
     obsTercile,tercThresh=result
     
     
-    #locations with too many identical values
+    #check for locations with too many identical values - forecast and skill measures cannot be derived for such locations
     max_counts = predictandHcst.apply(lambda col: col.value_counts().max())
     bad=max_counts>0.2*predictandHcst.shape[0]
     good=np.invert(bad)
@@ -164,17 +168,19 @@ def computeModel(model):
     #setting up forecast
     
     #setting up cross-validation
-    cvkwargs=crossvalidator_config[gl.config['crossval'][model]][1]
-    cv=crossvalidators[gl.config['crossval'][model]](**cvkwargs)
+    cvkwargs=gl.crossvalidator_config[gl.config['crossval']][1]
+    cv=crossvalidators[gl.config['crossval']](**cvkwargs)
     
-
     #arguments for regressor
-    kwargs=regressor_config[gl.config['regression'][model]][1]
-    
+    kwargs=gl.regressor_config[gl.config['regression']][1]
+
+    #arguments for preprocessor
+    args=gl.preprocessor_config[gl.config['preproc']][1]
+        
     #checking compatibility between data and selected regressor
-    if gl.config['preproc'][model]=="NONE":
+    if gl.config['preproc']=="NONE":
         if predictorHcst.shape[1]==1:
-            regressor = StdRegressor(regressor_name=gl.config['regression'][model], **kwargs)
+            regressor = StdRegressor(regressor_name=gl.config['regression'], **args, **kwargs)
         else:
             #2-D predictor, no need to PCR or CCA
             showMessage("2-D predictor, but no preprocessing requested. Please change pre-processor to either PCR or CCA", "ERROR")
@@ -186,13 +192,13 @@ def computeModel(model):
             return    
     
     #setting up regressor
-    if gl.config['preproc'][model]=="PCR":
+    if gl.config['preproc']=="PCR":
         #regession model
-        regressor = PCRegressor(regressor_name=gl.config['regression'][model], **kwargs)
+        regressor = PCRegressor(regressor_name=gl.config['regression'], **args, **kwargs)
         
-    if gl.config['preproc'][model]=="CCA":
+    if gl.config['preproc']=="CCA":
         
-        regressor = CCARegressor(regressor_name=gl.config['regression'][model], **kwargs)
+        regressor = CCARegressor(regressor_name=gl.config['regression'],**args, **kwargs)
         #return
   
     #=======================================================================================================
@@ -201,10 +207,14 @@ def computeModel(model):
     showMessage("Setting up directories to write to...")        
     forecastID="{}_{}".format(gl.predictorDate.strftime("%Y%m"), gl.config['fcstTargetSeas'])
     
-    predictorCode=Path(gl.config["predictorFiles"][model][0]).stem
+    predictorCode=Path(gl.config["predictorFileName"]).stem
     
-    forecastDir=Path(gl.config['rootDir'], forecastID, predictorCode,gl.targetType, "{}_{}_{}".format(gl.config["preproc"][model],gl.config["regression"][model],gl.config["crossval"][model]))
-
+    # this is directory where all output for a given forecast will be written
+    # Note - there is no signature of predictand in the structure of this directory, 
+    # so if predictand changes, output will be written into the same directory. 
+    forecastDir=Path(gl.config['rootDir'], forecastID, predictorCode,gl.targetType, "{}_{}_{}".format(gl.config["preproc"],gl.config["regression"],gl.config["crossval"]))
+    
+    #subdirectories for different type of output
     mapsDir=Path(forecastDir, "maps")
     timeseriesDir=Path(forecastDir, "timeseries")
     outputDir=Path(forecastDir, "output")
@@ -215,6 +225,7 @@ def computeModel(model):
           "timeseries":timeseriesDir,
           "diagnostics":diagsDir}
     
+    #creating them
     for adir in dirs.keys():
         if not os.path.exists(dirs[adir]):
             showMessage("{} directory {} does not exist. creating...".format(adir, dirs[adir]))
@@ -227,30 +238,37 @@ def computeModel(model):
     #=======================================================================================================
     # calculating forecast
 
-    #cross-validated hindcast
+    # cross-validated hindcast
     showMessage("Calculating cross-validated hindcast...")
     cvHcst = cross_val_predict(regressor,predictorHcst,  predictandHcst, cv=cv)
     
+    # output of the above is a plain numpy array, needs to be converted to pandas
     cvHcst=pd.DataFrame(cvHcst, index=predictandHcst.index, columns=predictandHcst.columns)
 
-
-    #actual prediction
+    # actual prediction - forecast
     showMessage("Calculating deteriministic forecast...")
     regressor.fit(predictorHcst,  predictandHcst)
     
+    # output of regression is deterministic forecast
     detFcst=regressor.predict(predictorFcst)
     detFcst=pd.DataFrame(detFcst, index=[fcstTgtDate], columns=predictandHcst.columns)
     
-    #hindcast based on full model - for diagnostics only - called est for estimated, to avoid confusion actual forecast 
+    # hindcast based on full model - for diagnostics only - called est for estimated, 
+    # to avoid confusion actual forecast 
     estHcst=regressor.predict(predictorHcst)
     estHcst=pd.DataFrame(estHcst, index=predictandHcst.index, columns=predictandHcst.columns)
     
-    #calculate forecast anomalies
-    refData=predictand[str(gl.config["climStartYr"]):str(gl.config["climEndYr"])]   
+    #extract reference period from predictand data
+    refData=predictand[str(gl.config["climStartYr"]):str(gl.config["climEndYr"])]
+    
+    #this adds anomalies to the dataframe
     detFcst=getFcstAnomalies(detFcst,refData)
     
     # calculate anomalies on hindcast data
+    # for "full model" hindcast
     estHcst=getFcstAnomalies(estHcst,refData)
+    
+    # for cross-validated hindcast
     cvHcst=getFcstAnomalies(cvHcst,refData)
     
     #deriving probabilistic prediction
@@ -264,13 +282,21 @@ def computeModel(model):
     probFcst,probHcst=result
     
     #tercile forecast
-    showMessage("Calculating tercile forecast (highest probability category)")    
+    showMessage("Calculating tercile forecast (highest probability category)")
+    
+    # forecast
     tercFcst=getTercCategory(probFcst)
+    
+    # and hindcast
     tercHcst=getTercCategory(probHcst)
     
     #CEM categories
     showMessage("Calculating CEM categories")
+    
+    #forecast
     cemFcst=getCemCategory(probFcst)
+    
+    #hindcast
     cemHcst=getCemCategory(probHcst)
     
     
@@ -284,44 +310,39 @@ def computeModel(model):
     
     #saving data
     showMessage("Plotting forecast maps and saving output files...")    
-    # these are ways to convert dataframes to dataarrays
-    #converts dataframe with two levels of column multiindex to xarray with variables taken from zero level of multiindex
+    #all dataframes have two levels of column multiindex 
     #cvHcst.unstack().to_xarray().transpose("time","lat","lon").to_dataset(name=gl.config['predictandVar'])
 
-    #this does the same
-    #cvHcst.stack(level=[0,1], future_stack=True).to_xarray().to_dataset(name=gl.config['predictandVar'])
-
-    #this is for three-level multi-index
-    #probHcst.stack(level=[1,2]).to_xarray()
-
-
     if gl.targetType=="grid":
-        #this is for plotting
-        detfcst=detFcst.stack(level=["lat","lon"],future_stack=True).droplevel(0).T
-        probfcst=probFcst.stack(level=["lat","lon"],future_stack=True).droplevel(0).T
-        tercfcst=tercFcst.stack(level=["lat","lon"],future_stack=True).droplevel(0).T
-        cemfcst=cemFcst.stack(level=["lat","lon"],future_stack=True).droplevel(0).T
-        #this is for writing
+        #these are for plotting maps
+        detfcst_plot=detFcst.stack(level=["lat","lon"],future_stack=True).droplevel(0).T
+        probfcst_plot=probFcst.stack(level=["lat","lon"],future_stack=True).droplevel(0).T
+        tercfcst_plot=tercFcst.stack(level=["lat","lon"],future_stack=True).droplevel(0).T
+        cemfcst_plot=cemFcst.stack(level=["lat","lon"],future_stack=True).droplevel(0).T
+        scores_plot=scores.copy()
+        
+        #these are for writing
         probfcst_write=probFcst.stack(level=["lat","lon"], future_stack=True).to_xarray().sortby("lat").sortby("lon")
         probhcst_write=probHcst.stack(level=["lat","lon"], future_stack=True).to_xarray().sortby("lat").sortby("lon")
         tercfcst_write=tercFcst.stack(level=["lat","lon"], future_stack=True).to_xarray().sortby("lat").sortby("lon")
         cemhcst_write=cemHcst.stack(level=["lat","lon"], future_stack=True).to_xarray().sortby("lat").sortby("lon")
         detfcst_write=detFcst.stack(level=["lat","lon"], future_stack=True).to_xarray().sortby("lat").sortby("lon")
-        #dethcst_write=cvHcst.stack(level=[0,1], future_stack=True).to_xarray().to_dataset(name=gl.config['predictandVar'])
         dethcst_write=cvHcst.stack(level=["lat","lon"], future_stack=True).to_xarray().sortby("lat").sortby("lon")
         scores_write=scores.T.to_xarray().sortby("lat").sortby("lon")
         fileExtension="nc"
     else:
-        #this is for plotting
-        detfcst=detFcst.stack(future_stack=True).droplevel(0).T
-        probfcst=probFcst.stack(future_stack=True).droplevel(0).T
-        tercfcst=tercFcst.stack(future_stack=True).droplevel(0).T
-        cemfcst=cemFcst.stack(future_stack=True).droplevel(0).T
-        #this is for writing
-        detfcst_write=detfcst.copy()
-        probfcst_write=probfcst.copy()
-        tercfcst_write=tercfcst.copy()
-        cemfcst_write=cemfcst.copy()
+        #these are for plotting maps
+        detfcst_plot=detFcst.stack(future_stack=True).droplevel(0).T
+        probfcst_plot=probFcst.stack(future_stack=True).droplevel(0).T
+        tercfcst_plot=tercFcst.stack(future_stack=True).droplevel(0).T
+        cemfcst_plot=cemFcst.stack(future_stack=True).droplevel(0).T
+        scores_plot=scores.copy()
+        
+        #these are for writing
+        detfcst_write=detfcst_plot.copy()
+        probfcst_write=probfcst_plot.copy()
+        tercfcst_write=tercfcst_plot.copy()
+        cemfcst_write=cemfcst_plot.copy()
         dethcst_write=cvHcst.copy()
         probhcst_write=probHcst.copy()
         scores_write=scores.copy()
@@ -346,15 +367,15 @@ def computeModel(model):
     
     showMessage("Plotting forecast maps...")
     
-    plotMaps(detfcst, geoData, geoData0, mapsDir, forecastID, zonesVector, overlayVector)
-    plotMaps(probfcst, geoData, geoData0, mapsDir, forecastID, zonesVector, overlayVector)
-    plotMaps(cemfcst, geoData, geoData0, mapsDir, forecastID, zonesVector, overlayVector)
-    plotMaps(tercfcst, geoData, geoData0, mapsDir, forecastID, zonesVector, overlayVector)
+    plotMaps(detfcst_plot, geoData, mapsDir, forecastID, zonesVector, overlayVector)
+    plotMaps(probfcst_plot, geoData, mapsDir, forecastID, zonesVector, overlayVector)
+    plotMaps(cemfcst_plot, geoData, mapsDir, forecastID, zonesVector, overlayVector)
+    plotMaps(tercfcst_plot, geoData, mapsDir, forecastID, zonesVector, overlayVector)
 
     
     showMessage("Plotting skill maps...")    
     #plotting skill scores
-    plotMaps(scores, geoData, geoData0, mapsDir, forecastID, zonesVector, overlayVector)
+    plotMaps(scores_plot, geoData, mapsDir, forecastID, zonesVector, overlayVector)
 
     
     showMessage("Plotting time series plots...") 
@@ -362,11 +383,11 @@ def computeModel(model):
     
     
     showMessage("Plotting preprocessing diagnostics...")
-    if gl.config['preproc'][model]=="PCR":
-        plotDiagsPCR(regressor, predictorHcst, predictandHcst, diagsDir, forecastID)
+    if gl.config['preproc']=="PCR":
+        plotDiagsPCR(regressor, predictorHcst, predictandHcst, geoData, diagsDir, forecastID)
 
-    if gl.config['preproc'][model]=="CCA":
-        plotDiagsCCA(regressor, predictorHcst, predictandHcst, diagsDir, forecastID)
+    if gl.config['preproc']=="CCA":
+        plotDiagsCCA(regressor, predictorHcst, predictandHcst, geoData, diagsDir, forecastID)
     
     showMessage("Plotting regression diagnostics...")
     plotDiagsRegression(predictandHcst, cvHcst, estHcst, tercThresh, detFcst, diagsDir, forecastID)
@@ -415,10 +436,10 @@ class Worker(QtCore.QThread):
     def run(self):
         """Run the provided function in a thread and emit logs."""
         try:
-            self.log.emit(f"Task '{self.task_name}' started...")
+            self.log.emit(f"<i>Task '{self.task_name}' started...</i>")
             # Run the task
             self.task_function(*self.args, **self.kwargs)
-            self.log.emit(f"Task '{self.task_name}' finished successfully.")
+            self.log.emit(f"<i>Task '{self.task_name}' finished successfully.</i>")
         except Exception as e:
             tb = traceback.format_exc()
             self.log.emit(f"Error occurred in {self.task_name}:\n{tb}")            
@@ -438,23 +459,14 @@ class MainWindow(QtWidgets.QMainWindow):
         self.workers = []
         
         self.log_signal.connect(self.append_log)
-
-        # Collect buttons
-        self.runbuttons = [self.button_run0]
-        self.predictors = [[self.browseButton_predictorfile0, self.lineEdit_predictorfile0, self.comboBox_predictorvar0]]
         
-
         # Connect signals
-        for i,button in enumerate(self.runbuttons):
-            button.clicked.connect(lambda _, idx=i: self.start_task(f"Model {idx}", computeModel, idx))
+        self.button_run.clicked.connect(lambda: self.start_task(f"Model", computeModel))
 
-            
-        for i,item in enumerate(self.predictors):
-            button,line_edit,combo_box=item
-            button.clicked.connect(
-                lambda: browse(line_edit, mode='file', parent=self, 
-                               file_filter="CSV or NetCDF (*.csv *.nc)", combo_box=combo_box)
-            )
+        self.browseButton_predictorfile.clicked.connect(
+            lambda: browse(self.lineEdit_predictorfile, mode='file', parent=self, 
+                           file_filter="CSV or NetCDF (*.csv *.nc)", combo_box=self.comboBox_predictorvar)
+        )
         
         self.clearLogButton.clicked.connect(self.logWindow.clear)
         
@@ -487,7 +499,7 @@ class MainWindow(QtWidgets.QMainWindow):
         worker.start()
         
     def append_log(self, message: str):
-        self.logWindow.appendHtml(f"<pre>{message}</pre>")
+        self.logWindow.appendHtml(f"{message}")
         self.logWindow.ensureCursorVisible()
             
     def cleanup_worker(self, task_name):
@@ -531,7 +543,15 @@ preprocessors={
     "NONE":["No preprocessing", {}],
 }
 
-if os.path.exists(gl.configFile):
+
+if not os.path.exists(gl.configFile):
+    showMessage("config file {} does not exist. Making default config.".format(gl.configFile))
+    makeConfig()
+    
+check=readFunctionConfig()
+if check is None:
+    print("failed")
+else:
     try:
         showMessage("reading config from: {}".format(gl.configFile))
         with open(gl.configFile, "r") as f:
@@ -541,9 +561,5 @@ if os.path.exists(gl.configFile):
         showMessage("config file corrupted. Making default config.".format(gl.configFile))
         makeConfig()
         populateGui()
-else:
-    showMessage("config file {} does not exist. Making default config.".format(gl.configFile))
-    makeConfig()
-    populateGui()
     
 sys.exit(app.exec_())

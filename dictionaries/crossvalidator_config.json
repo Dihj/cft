@@ -1,0 +1,5 @@
+{
+"KF":["K-Fold",{"n_splits":5}],
+"LOO":["Leave One Out",{}]
+}
+

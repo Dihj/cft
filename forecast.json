@@ -6,37 +6,25 @@
     "fcstTargetYear": 2025,
     "climEndYr": 2015,
     "climStartYr": 1994,
-    "predictorExtents": [
-        {
-            "minLon": -180.0,
-            "maxLon": 180.0,
-            "minLat": -60.0,
-            "maxLat": 60.0
-        }
-    ],
-    "predictorFiles": [
-        [
-            "/work/code/csc/cft/download_test/SST_ERSSTv5_IRIDL_mon_198107-202507.nc",
-            "sst",
-            "SST"
-        ]
-    ],
-    "crossval": [
-        "KF"
-    ],
-    "preproc": [
-        "PCR"
-    ],
-    "regression": [
-        "OLS"
-    ],
-    "timeAggregation": "mean",
-    "predictandFileName": "/work/code/csc/cft/sadc_cft_current/example_data/pr_mon_chirps-v2.0_198101-202308.nc",
-    "predictandVar": "PRCPTOT",
+    "predictorExtents": {
+        "minLon": -180.0,
+        "maxLon": 180.0,
+        "minLat": -60.0,
+        "maxLat": 60.0
+    },
+    "predictorFileName": "/work/code/csc/cft/download_test/SST_ERSSTv5_IRIDL_mon_198107-202507.nc",
+    "predictorVar": "sst",
+    "predictorCode": "SST",
+    "crossval": "KF",
+    "preproc": "PCR",
+    "regression": "OLS",
+    "timeAggregation": "sum",
+    "predictandFileName": "/work/code/csc/cft/sadc_cft_current/example_data/PRCP_CHIRPSp25_IRIDL_Dec-Feb_198112-202502.nc",
+    "predictandVar": "prcp",
     "predictandCategory": "rainfall",
     "predictandMissingValue": "-999",
-    "zonesFile": "/work/code/csc/cft/sadc_cft_current/example_data/SADC_MAM_2022_Consensus.geojson",
+    "zonesFile": "/work/code/csc/cft/sadc_cft_current/example_data/sadc_djf_zones.geojson",
     "zonesAttribute": "ID",
     "zonesAggregate": false,
-    "overlayFile": "/work/code/csc/cft/sadc_cft_current/example_data/SADC_MAM_2022_Consensus.geojson"
+    "overlayFile": ""
 }
