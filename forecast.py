@@ -103,7 +103,10 @@ def computeModel():
         
         # calling the aggregation function   
         predictand,geoData=aggregatePredictand(predictand0, geoData0, zonesVector)
-        
+            
+        if predictand is None:
+            showMessage("Predictand could not be aggregated to zones. Make sure there is overlap between predictand data and zones vector. Stopping early.", "ERROR")
+            return
         
         #checking if result has data
         if predictand.dropna(axis=1).empty:
@@ -114,6 +117,8 @@ def computeModel():
         zonesVector=None
         predictand=predictand0.copy()
         geoData=geoData0.copy()
+    
+
     
     #reading overlay file
     overlayVector=None
@@ -131,6 +136,8 @@ def computeModel():
     #finding overlap of predictand and predictor
     showMessage("Aligning predictor and predictand data...")
     predictandHcst,predictorHcst=getHcstData(predictand,predictor)
+    
+    print(predictandHcst)
     
     predictorFcst=getFcstData(predictor)
     if predictandHcst is None:
@@ -157,6 +164,7 @@ def computeModel():
         badnames=predictandHcst.loc[:,bad].columns
         for name in badnames:
             showMessage("cannot calculate forecast for {} - too many similar values in predictand".format(name), "NONCRITICAL")
+            
 
     #removing bad locations
     predictandHcst=predictandHcst.loc[:,good]

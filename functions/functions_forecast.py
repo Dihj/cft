@@ -453,8 +453,9 @@ def readPredictand():
         showMessage("could not read requested variable from file","ERROR")
         return
 
-          
+    print("1", obsdata["2021":"2022"])          
     obsdata=obsdata.dropna()
+    print("2", obsdata["2021":"2022"])          
               
     #resampling if necessary
     if gl.fcstBaseTime=="seas":
@@ -462,9 +463,11 @@ def readPredictand():
         if gl.config['timeAggregation']=="mean":
              obsdata=obsdata.resample("QS-{}".format((gl.config['fcstTargetSeas'][0:3]).upper())).mean()
         else:
-             obsdata=obsdata.resample("QS-{}".format((gl.config['fcstTargetSeas'][0:3]).upper())).sum()
+             obsdata=obsdata.resample("QS-{}".format((gl.config['fcstTargetSeas'][0:3]).upper())).mean()*3
 
     obsdata=obsdata.dropna()
+    
+    print(3, obsdata["2021":"2022"])          
 
     #select target season
     tgtMonth=month2int(gl.config['fcstTargetSeas'][0:3])
@@ -590,7 +593,8 @@ def zonalMean(_grid, _poly):
         zs=zonal_stats(_poly, 
                        _grid[i,:,:].data, 
                        affine=affine, 
-                       nodata=np.nan)
+                       nodata=np.nan,
+                      all_touched=False)
         temp=[x["mean"] for x in zs]
         _zonalmean.append(temp)
 
@@ -602,6 +606,7 @@ def zonalMean(_grid, _poly):
 def aggregatePredictand(_data, _geodata, _poly):
     showMessage("aggregating...")
     
+    
     if isinstance(_geodata,xr.DataArray):
         #this is if geodata is xarray object
         _data=_data.unstack().to_xarray()
@@ -612,7 +617,6 @@ def aggregatePredictand(_data, _geodata, _poly):
         _aggregated=zonalMean(_data, _poly)
         
         showMessage("\tAverage values for {} regions derived from data for {} by {} grid".format(_aggregated.shape[1], _data.shape[1], _data.shape[2]))
-        
     else:
         #this is if geodata is a geopandas object
         _points=_geodata.copy().join(_data.T)
@@ -631,6 +635,23 @@ def aggregatePredictand(_data, _geodata, _poly):
             showMessage("\tWarning: No spatial matches found between station points and polygon boundaries")
             _aggregated = pd.DataFrame(index=_data.index)  # Empty dataframe with correct index
     
+    #dropping columns that are empty
+    
+    cols_to_drop = _aggregated.columns[_aggregated.isna().all()]
+    
+    if len(cols_to_drop)>0:
+        showMessage("\tSome polygons do not fall over predictand data", "ERROR")
+        #return None, None
+    # Find columns to keep (those not all NaN)
+    
+    cols_to_keep = _aggregated.columns[~_aggregated.isna().all()]
+
+    # Drop the NaN-only columns from df
+    _aggregated = _aggregated[cols_to_keep]
+
+    # Filter gdf to keep only those indices
+    _poly = _poly.loc[cols_to_keep]
+
     return _aggregated, _poly
 
 
@@ -669,8 +690,8 @@ def getLeadTime():
 def getHcstData(_predictand,_predictor):
     
     #get time of predictand and predictor
-    _predictor=_predictor.dropna()
-    _predictand=_predictand.dropna()
+#    _predictor=_predictor.dropna()
+#    _predictand=_predictand.dropna()
     
     tgtTime=pd.to_datetime(_predictand.index)
     srcTime=pd.to_datetime(_predictor.index)
@@ -1013,7 +1034,7 @@ def getSkill(_prob_hcst,_det_hcst,_predictand_hcst,_obs_tercile):
         roc_score_above = np.round(roc_auc_score(_obs_tercile[entry]=="above", _prob_hcst["above"][entry]),2)
         roc_score_below = np.round(roc_auc_score(_obs_tercile[entry]=="below", _prob_hcst["below"][entry]),2)
         roc_score_normal = np.round(roc_auc_score(_obs_tercile[entry]=="normal", _prob_hcst["normal"][entry]),2)
-        cor=np.round(np.corrcoef(_det_hcst[entry],_predictand_hcst[entry])[0][1],2)
+        cor=np.round(np.corrcoef(_det_hcst[entry].values,_predictand_hcst[entry].values.astype(float))[0][1],2)
         #r2=np.round(r2_score(_det_hcst[entry],_predictand_hcst[entry]))
         ev=np.round(explained_variance_score(_det_hcst[entry],_predictand_hcst[entry]))
         mape=np.round(mean_absolute_percentage_error(_det_hcst[entry],_predictand_hcst[entry]),2)
