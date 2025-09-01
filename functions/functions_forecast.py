@@ -453,9 +453,7 @@ def readPredictand():
         showMessage("could not read requested variable from file","ERROR")
         return
 
-    print("1", obsdata["2021":"2022"])          
     obsdata=obsdata.dropna()
-    print("2", obsdata["2021":"2022"])          
               
     #resampling if necessary
     if gl.fcstBaseTime=="seas":
@@ -467,7 +465,6 @@ def readPredictand():
 
     obsdata=obsdata.dropna()
     
-    print(3, obsdata["2021":"2022"])          
 
     #select target season
     tgtMonth=month2int(gl.config['fcstTargetSeas'][0:3])

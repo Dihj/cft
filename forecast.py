@@ -137,7 +137,6 @@ def computeModel():
     showMessage("Aligning predictor and predictand data...")
     predictandHcst,predictorHcst=getHcstData(predictand,predictor)
     
-    print(predictandHcst)
     
     predictorFcst=getFcstData(predictor)
     if predictandHcst is None:
