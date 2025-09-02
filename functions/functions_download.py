@@ -45,6 +45,7 @@ predictandSources={
                      "https://iridl.ldeo.columbia.edu/SOURCES/.UCSB/.CHIRPS/.v2p0/.daily-improved/.global/.0p25/.prcp/{}/mul/T/(1 Jan {})/(31 Dec {})/RANGE/T/({} {}-{})/seasonalAverage/Y/({})/({})/RANGEEDGES/X/({})/({})/RANGEEDGES/-999/setmissing_value/data.nc", "sum", 1981],
 }
 
+
 predictorSources={
 "SST_ERSSTv5_IRIDL":["Sea Surface temperature ERSST v5",
                          "http://iridl.ldeo.columbia.edu/SOURCES/.NOAA/.NCDC/.ERSST/.version5/.sst/T/({} {}-{})/VALUES/T/12/STEP/Y/{}/{}/RANGEEDGES/X/{}/{}/RANGEEDGES/-999/setmissing_value/data.nc", 1854],
@@ -88,19 +89,24 @@ def showMessage(_message, _type="RUNTIME"):
     gl.window.log(_message)
 
     
-def downloadUrl(_url):        
+def downloadUrl(_url, timeout=60):
     #requesting data
-    showMessage("waiting for: {}".format(_url))
+    showMessage("waiting for:\n{}".format(_url))
     
-    response=requests.get(_url)
-    showMessage("done")
-
-    #checking if response successful
-    if response.status_code!=200:
-        print(response)
-        return
-    
-    return response
+    try:
+        response=requests.get(_url, timeout=(10,None))
+        # If it returns a response object, you can also check:
+        # response.raise_for_status()  # raises error for HTTP 4xx/5xx
+        return response
+    except requests.exceptions.Timeout:
+        showMessage(f"Timeout error while downloading: {_url}", "ERROR")
+    except requests.exceptions.ConnectionError:
+        showMessage(f"Connection error while downloading: {_url}. Are you connected to internet?", "ERROR")
+    except requests.exceptions.HTTPError as e:
+        showMessage(f"HTTP error {e.response.status_code} while downloading: {_url}", "ERROR")
+    except requests.exceptions.RequestException as e:
+        showMessage(f"General request error: {e}", "ERROR")
+    return None
     
 def month2int(_str):
     #converts month string to non-pythonic integer month number
@@ -206,10 +212,11 @@ def downloadPredictand():
             return    
 
                      
-                     
+            
             
     showMessage("\ndownloading {}".format(_predictandcode))
-
+    
+    
     _source=_predictandcode.split("_")[-1]
     
     url=predictandSources[_predictandcode][1]
@@ -222,6 +229,7 @@ def downloadPredictand():
         showMessage("\nAdjusting requested first year to first year for which data are available. {} -> {}".format(firstyear, firstavailyear), "NONCRITICAL")
         firstyear=firstavailyear
     
+
     #simply - monthly target will have three letters, seasonal target - 7
     if len(_predictandseas)==3:
         #monthly
@@ -296,9 +304,9 @@ def downloadPredictand():
                 #for montly data, it will be the first of the first month and the first of the last month
                 firstdatadate=pd.to_datetime("{}-{}-15".format(time_cftime[0].year, time_cftime[0].month))-pd.offsets.MonthBegin()
                 lastdatadate=pd.to_datetime("{}-{}-15".format(time_cftime[-1].year, time_cftime[-1].month))-pd.offsets.MonthBegin()
-                           
+            
             if lastdatadate<last_date:
-                showMessage("Downloaded data contains data till {}, and thus does not fully cover the the requested period {}".format(last_date.strftime("%b %Y"), daterange), "NONCRITICAL")
+                showMessage("Downloaded data contains data till {}, and thus does not fully cover the the requested period {}".format(lastdatadate.strftime("%b %Y"), daterange), "NONCRITICAL")
             else:
                 showMessage("All fine", "NONCRITICAL")
                 
@@ -803,12 +811,10 @@ def populateGui():
         gl.window.comboBox4_var.addItem(value[0], key)
 
     gl.window.comboBox_tgtseas.clear()
-    gl.window.comboBox_tgtseas.addItem("", "")
     for key in seasons:
         gl.window.comboBox_tgtseas.addItem(key, key)
     
     gl.window.comboBox_srcmon.clear()
-    gl.window.comboBox_srcmon.addItem("", "")
     for key in months:
         gl.window.comboBox_srcmon.addItem(key, key)
         
@@ -818,14 +824,17 @@ def populateGui():
     gl.window.lineEdit_srcyear.setText(str(gl.config['predictorYear']))
     gl.window.lineEdit_firstyear.setText(str(gl.config['firstDataYear']))
     gl.window.comboBox_srcmon.setCurrentText(gl.config['predictorMonth'])
+    
     gl.window.lineEdit1_minlat.setText(str(gl.config['predictandMinLat']))
     gl.window.lineEdit1_minlon.setText(str(gl.config['predictandMinLon']))
     gl.window.lineEdit1_maxlat.setText(str(gl.config['predictandMaxLat']))
     gl.window.lineEdit1_maxlon.setText(str(gl.config['predictandMaxLon']))
+    
     gl.window.lineEdit2_minlat.setText(str(gl.config['predictorMinLat']))
     gl.window.lineEdit2_minlon.setText(str(gl.config['predictorMinLon']))
     gl.window.lineEdit2_maxlat.setText(str(gl.config['predictorMaxLat']))
     gl.window.lineEdit2_maxlon.setText(str(gl.config['predictorMaxLon']))
+    
     gl.window.lineEdit3_minlat.setText(str(gl.config['fcstpredMinLat']))
     gl.window.lineEdit3_minlon.setText(str(gl.config['fcstpredMinLon']))
     gl.window.lineEdit3_maxlat.setText(str(gl.config['fcstpredMaxLat']))

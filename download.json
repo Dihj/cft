@@ -8,9 +8,9 @@
     "predictandCode": "PRCP_CHIRPSp25_IRIDL",
     "predictandOverwrite": false,
     "predictandMinLat": "-40",
-    "predictandMaxLat": "10",
-    "predictandMinLon": "10",
-    "predictandMaxLon": "55",
+    "predictandMaxLat": "-30",
+    "predictandMinLon": "15",
+    "predictandMaxLon": "25",
     "predictorCode": "",
     "predictorOverwrite": false,
     "predictorMinLat": "-60",
@@ -24,5 +24,6 @@
     "fcstpredMinLon": "-180",
     "fcstpredMaxLon": "180",
     "indexCode": "",
-    "indexOverwrite": false
+    "indexOverwrite": false,
+    "predictandAllMonths": false
 }

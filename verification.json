@@ -1,24 +1,31 @@
 {
     "Version": "4.1.0",
-    "outDir": "/work/projects/intraACP/verification_training/sample_data",
+    "outDir": "/work/code/csc/cft/test_data",
     "fcstFile": {
-        "file": "/work/projects/intraACP/verification_training/sample_data/input/SADC_MAM_2022_Consensus.geojson",
-        "ID": 1,
+        "file": "/work/code/csc/cft/stress_testing_data/lesotho/2023OND_zone-forecast.geojson",
+        "ID": 3,
         "variable": [
+            "pkuid",
+            "Zone",
             "ID",
-            "MAM_2023"
+            "fcst_class"
         ]
     },
     "summaryzonesFile": {
-        "file": "/work/projects/intraACP/verification_training/sample_data/input/SADC_MAM_2022_Consensus.geojson",
-        "ID": 0,
+        "file": "/work/code/csc/cft/stress_testing_data/lesotho/sz_rain_zones.geojson",
+        "ID": 1,
         "variable": [
+            "pkuid",
+            "Zone",
             "ID",
-            "MAM_2023"
+            "ond2018",
+            "ndj201819",
+            "djf201819",
+            "jfm2019"
         ]
     },
     "obsFile": {
-        "file": "/work/projects/intraACP/verification_training/sample_data/input/pr_chirps_SADC_198101-202208.csv",
+        "file": "/work/code/csc/cft/stress_testing_data/lesotho/eswatin23_piotr_updated1_Jan_2025d.csv",
         "ID": 0,
         "variable": [
             "pr"
@@ -69,7 +76,7 @@
             "Nov",
             "Dec"
         ],
-        "indx": 2
+        "indx": 9
     },
     "outputQuantanom": true,
     "outputHeidke": true,
