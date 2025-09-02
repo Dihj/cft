@@ -12,7 +12,7 @@ from sklearn import cluster
 import pandas as pd
 import os, time, sys, re
 from datetime import datetime
-import geojson
+import geojson, json
 import math
 
 

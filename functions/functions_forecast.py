@@ -618,11 +618,16 @@ def aggregatePredictand(_data, _geodata, _poly):
         #this is if geodata is a geopandas object
         _points=_geodata.copy().join(_data.T)
         #joining polygons and points
+        print(_geodata)
+
         _joined = gpd.sjoin(_points, _poly, how="inner", predicate="within")
+        print(_joined)
+        #sys.exit()
         
         # Check if spatial matches were found before trying to rename index_right
-        if not _joined.empty and 'index_right' in _joined.columns:
-            _joined = _joined.rename(columns={"index_right": gl.config["zonesAttribute"]})
+        #if not _joined.empty and 'index_right' in _joined.columns:
+        if not _joined.empty and gl.config["zonesAttribute"] in _joined.columns:
+            #_joined = _joined.rename(columns={"index_right": gl.config["zonesAttribute"]})
             #aggregating 
             _aggregated = _joined.groupby(gl.config["zonesAttribute"]).mean(numeric_only=True).T
             _aggregated.index=_data.index
