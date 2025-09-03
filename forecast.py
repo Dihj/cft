@@ -27,11 +27,13 @@ import importlib
 from PyQt5 import QtWidgets, uic, QtCore
 from PyQt5.QtWidgets import QFileDialog
 import traceback
+import geopandas as gpd
 
 from pathlib import Path
 
 import gl
-from functions.functions_forecast import *
+import functions.functions_forecast as ff
+
 
 # in code
 gl.configFile="forecast.json"
@@ -44,44 +46,46 @@ def computeModel():
     
     #=======================================================================================================
     #preliminaries
-    
+
+    #reloading functions
+    importlib.reload(ff) 
     
     #read config from gui
-    check=readGUI()
+    check=ff.readGUI()
     if check is None:
-        showMessage("Errors in user input, stopping early.", "ERROR")
+        ff.showMessage("Errors in user input, stopping early.", "ERROR")
         return
     
     #check user inputs
-    check=checkInputs()
+    check=ff.checkInputs()
     if check is None:
-        showMessage("Errors in user input, stopping early.", "ERROR")
+        ff.showMessage("Errors in user input, stopping early.", "ERROR")
         return
     
     #save config to json file
-    saveConfig()
+    ff.saveConfig()
 
     
     #=======================================================================================================
     #reading data
     
     #determine lead time
-    leadTime=getLeadTime()
+    leadTime=ff.getLeadTime()
     
     if leadTime is None:
-        showMessage("Lead time could not be calculated, stopping early.", "ERROR")
+        ff.showMessage("Lead time could not be calculated, stopping early.", "ERROR")
         return
     
     #reading predictors data
-    predictor,geoDataPredictor=readPredictor()
+    predictor,geoDataPredictor=ff.readPredictor()
     if predictor is None:
         showMessage("Predictor could not be read, stopping early.", "ERROR")
         return
 
     #reading predictand data - this will calculate seasonal from monthly if needed.
-    result=readPredictand()
+    result=ff.readPredictand()
     if result is None:
-        showMessage("Predictand could not be read, stopping early.", "ERROR")
+        ff.showMessage("Predictand could not be read, stopping early.", "ERROR")
         return
     
     # 0 denotes data as read from input files, when transformed later, these are kept for later use 
@@ -90,27 +94,33 @@ def computeModel():
     
     #aggregating to zones if required
     if gl.config["zonesAggregate"]:
-        showMessage("Aggregating data to zones read from {} ...".format(gl.config["zonesFile"]))
+        ff.showMessage("Aggregating data to zones read from {} ...".format(gl.config["zonesFile"]))
         
         zonesVector=gpd.read_file(gl.config["zonesFile"])
         
+        ff.showMessage("checking validity of data from {} ...".format(gl.config["zonesFile"]))
+        
+        check=ff.checkPolyValidity(zonesVector)
+        if not check:
+            sys.exit()
+        
         if not zonesVector[gl.config["zonesAttribute"]].is_unique:
-            showMessage("Selected vector attribute in regions map contains identical values. These values have to be unique for each zone, please check the zones vector file or the attribute you selected. Stopping early.", "ERROR")
+            ff.showMessage("Selected vector attribute in regions map contains identical values. These values have to be unique for each zone, please check the zones vector file or the attribute you selected. Stopping early.", "ERROR")
             return
         
         #retaining just the attribute as index
         zonesVector=zonesVector[[gl.config["zonesAttribute"], 'geometry']].set_index(gl.config["zonesAttribute"])
         
         # calling the aggregation function   
-        predictand,geoData=aggregatePredictand(predictand0, geoData0, zonesVector)
+        predictand,geoData=ff.aggregatePredictand(predictand0, geoData0, zonesVector)
             
         if predictand is None:
-            showMessage("Predictand could not be aggregated to zones. Make sure there is overlap between predictand data and zones vector. Stopping early.", "ERROR")
+            ff.showMessage("Predictand could not be aggregated to zones. Make sure there is overlap between predictand data and zones vector. Stopping early.", "ERROR")
             return
         
         #checking if result has data
         if predictand.dropna(axis=1).empty:
-            showMessage("Predictand could not be aggregated to zones. Make sure there is overlap between predictand data and zones vector. Stopping early.", "ERROR")
+            ff.showMessage("Predictand could not be aggregated to zones. Make sure there is overlap between predictand data and zones vector. Stopping early.", "ERROR")
             return
             
     else:
@@ -134,21 +144,21 @@ def computeModel():
     fcstTgtDate=pd.to_datetime("01 {} {}".format(gl.config['fcstTargetSeas'][0:3], gl.config['fcstTargetYear']))
     
     #finding overlap of predictand and predictor
-    showMessage("Aligning predictor and predictand data...")
-    predictandHcst,predictorHcst=getHcstData(predictand,predictor)
+    ff.showMessage("Aligning predictor and predictand data...")
+    predictandHcst,predictorHcst=ff.getHcstData(predictand,predictor)
     
     
-    predictorFcst=getFcstData(predictor)
+    predictorFcst=ff.getFcstData(predictor)
     if predictandHcst is None:
-        showMessage("Hindcast data for predictand could not be derived, stopping early.", "ERROR")
+        ff.showMessage("Hindcast data for predictand could not be derived, stopping early.", "ERROR")
         return
     
     
     #calculaing observed terciles
     #is there a need to do a strict control of overlap???
-    result=getObsTerciles(predictand, predictandHcst)
+    result=ff.getObsTerciles(predictand, predictandHcst)
     if result is None:
-        showMessage("Terciles could not be calculated, stopping early.", "ERROR")
+        ff.showMessage("Terciles could not be calculated, stopping early.", "ERROR")
                 
     obsTercile,tercThresh=result
     
@@ -187,7 +197,7 @@ def computeModel():
     #checking compatibility between data and selected regressor
     if gl.config['preproc']=="NONE":
         if predictorHcst.shape[1]==1:
-            regressor = StdRegressor(regressor_name=gl.config['regression'], **args, **kwargs)
+            regressor = ff.StdRegressor(regressor_name=gl.config['regression'], **args, **kwargs)
         else:
             #2-D predictor, no need to PCR or CCA
             showMessage("2-D predictor, but no preprocessing requested. Please change pre-processor to either PCR or CCA", "ERROR")
@@ -201,17 +211,17 @@ def computeModel():
     #setting up regressor
     if gl.config['preproc']=="PCR":
         #regession model
-        regressor = PCRegressor(regressor_name=gl.config['regression'], **args, **kwargs)
+        regressor = ff.PCRegressor(regressor_name=gl.config['regression'], **args, **kwargs)
         
     if gl.config['preproc']=="CCA":
         
-        regressor = CCARegressor(regressor_name=gl.config['regression'],**args, **kwargs)
+        regressor = ff.CCARegressor(regressor_name=gl.config['regression'],**args, **kwargs)
         #return
   
     #=======================================================================================================
     #setting up output directory structure
     
-    showMessage("Setting up directories to write to...")        
+    ff.showMessage("Setting up directories to write to...")        
     forecastID="{}_{}".format(gl.predictorDate.strftime("%Y%m"), gl.config['fcstTargetSeas'])
     
     predictorCode=Path(gl.config["predictorFileName"]).stem
@@ -235,10 +245,10 @@ def computeModel():
     #creating them
     for adir in dirs.keys():
         if not os.path.exists(dirs[adir]):
-            showMessage("{} directory {} does not exist. creating...".format(adir, dirs[adir]))
+            ff.showMessage("{} directory {} does not exist. creating...".format(adir, dirs[adir]))
             os.makedirs(dirs[adir])
         else:
-            showMessage("{} will be written to {}".format(adir, dirs[adir]), "INFO")
+            ff.showMessage("{} will be written to {}".format(adir, dirs[adir]), "INFO")
             
 
 
@@ -246,14 +256,14 @@ def computeModel():
     # calculating forecast
 
     # cross-validated hindcast
-    showMessage("Calculating cross-validated hindcast...")
-    cvHcst = cross_val_predict(regressor,predictorHcst,  predictandHcst, cv=cv)
+    ff.showMessage("Calculating cross-validated hindcast...")
+    cvHcst = ff.cross_val_predict(regressor,predictorHcst,  predictandHcst, cv=cv)
     
     # output of the above is a plain numpy array, needs to be converted to pandas
     cvHcst=pd.DataFrame(cvHcst, index=predictandHcst.index, columns=predictandHcst.columns)
 
     # actual prediction - forecast
-    showMessage("Calculating deteriministic forecast...")
+    ff.showMessage("Calculating deteriministic forecast...")
     regressor.fit(predictorHcst,  predictandHcst)
     
     # output of regression is deterministic forecast
@@ -269,54 +279,54 @@ def computeModel():
     refData=predictand[str(gl.config["climStartYr"]):str(gl.config["climEndYr"])]
     
     #this adds anomalies to the dataframe
-    detFcst=getFcstAnomalies(detFcst,refData)
+    detFcst=ff.getFcstAnomalies(detFcst,refData)
     
     # calculate anomalies on hindcast data
     # for "full model" hindcast
-    estHcst=getFcstAnomalies(estHcst,refData)
+    estHcst=ff.getFcstAnomalies(estHcst,refData)
     
     # for cross-validated hindcast
-    cvHcst=getFcstAnomalies(cvHcst,refData)
+    cvHcst=ff.getFcstAnomalies(cvHcst,refData)
     
     #deriving probabilistic prediction
-    showMessage("Calculating probabilistic hindcast and forecast using error variance...")
+    ff.showMessage("Calculating probabilistic hindcast and forecast using error variance...")
     
     #this one uses cross-validated hindcast for error
-    result=probabilisticForecast(cvHcst["value"], predictandHcst,detFcst["value"],tercThresh)
+    result=ff.probabilisticForecast(cvHcst["value"], predictandHcst,detFcst["value"],tercThresh)
     if result is None:
-        showMessage("Probabilistic forecast could not be calculated", "ERROR")
+        ff.showMessage("Probabilistic forecast could not be calculated", "ERROR")
         return
     probFcst,probHcst=result
     
     #tercile forecast
-    showMessage("Calculating tercile forecast (highest probability category)")
+    ff.showMessage("Calculating tercile forecast (highest probability category)")
     
     # forecast
-    tercFcst=getTercCategory(probFcst)
+    tercFcst=ff.getTercCategory(probFcst)
     
     # and hindcast
-    tercHcst=getTercCategory(probHcst)
+    tercHcst=ff.getTercCategory(probHcst)
     
     #CEM categories
-    showMessage("Calculating CEM categories")
+    ff.showMessage("Calculating CEM categories")
     
     #forecast
-    cemFcst=getCemCategory(probFcst)
+    cemFcst=ff.getCemCategory(probFcst)
     
     #hindcast
-    cemHcst=getCemCategory(probHcst)
+    cemHcst=ff.getCemCategory(probHcst)
     
     
     #calculating skill
-    showMessage("Calculating skill scores...")
-    scores=getSkill(probHcst,cvHcst["value"],predictandHcst,obsTercile)    
+    ff.showMessage("Calculating skill scores...")
+    scores=ff.getSkill(probHcst,cvHcst["value"],predictandHcst,obsTercile)    
     if scores is None:
-        showMessage("Skill could not be calculated", "ERROR")
+        ff.showMessage("Skill could not be calculated", "ERROR")
         return
     
     
     #saving data
-    showMessage("Plotting forecast maps and saving output files...")    
+    ff.showMessage("Plotting forecast maps and saving output files...")    
     #all dataframes have two levels of column multiindex 
     #cvHcst.unstack().to_xarray().transpose("time","lat","lon").to_dataset(name=gl.config['predictandVar'])
 
@@ -355,53 +365,63 @@ def computeModel():
         scores_write=scores.copy()
         fileExtension="csv"
         
-    showMessage("Writing output files...")
+    ff.showMessage("Writing output files...")
     outputFile=Path(outputDir, "{}_deterministic-fcst_{}.{}".format(gl.config['predictandVar'], forecastID,fileExtension))
-    writeOutput(np.round(detfcst_write,2), outputFile)
+    ff.writeOutput(np.round(detfcst_write,2), outputFile)
 
     outputFile=Path(outputDir, "{}_probabilistic-fcst_{}.{}".format(gl.config['predictandVar'], forecastID,fileExtension))
-    writeOutput(np.round(probfcst_write,2),outputFile)
+    ff.writeOutput(np.round(probfcst_write,2),outputFile)
 
     outputFile=Path(outputDir, "{}_skill_{}.{}".format(gl.config['predictandVar'], forecastID,fileExtension))
-    writeOutput(scores_write, outputFile)
+    ff.writeOutput(scores_write, outputFile)
 
     outputFile=Path(outputDir, "{}_deterministic-hcst_{}.{}".format(gl.config['predictandVar'], forecastID,fileExtension))
-    writeOutput(np.round(dethcst_write,2),outputFile)
+    ff.writeOutput(np.round(dethcst_write,2),outputFile)
 
     outputFile=Path(outputDir, "{}_probabilistic-hcst_{}.{}".format(gl.config['predictandVar'], forecastID,fileExtension))
-    writeOutput(np.round(probhcst_write,2),outputFile)
+    ff.writeOutput(np.round(probhcst_write,2),outputFile)
 
     
-    showMessage("Plotting forecast maps...")
+    ff.showMessage("Plotting forecast maps...")
+
+    annotation="Forecast for: {} {}".format(gl.config['fcstTargetSeas'], gl.config['fcstTargetYear'])
+    annotation+="\nPredictors from: {} {}".format(gl.config['predictorMonth'], gl.config['predictorYear'])
+    annotation+="\nPredictor: {}".format(Path(gl.config["predictorFileName"]).stem)
+    annotation+="\nPredictand: {}".format(Path(gl.config["predictandFileName"]).stem)
+    annotation+="\nClimatological period: {}-{}".format(gl.config['climStartYr'], gl.config['climEndYr'])
     
-    plotMaps(detfcst_plot, geoData, mapsDir, forecastID, zonesVector, overlayVector)
-    plotMaps(probfcst_plot, geoData, mapsDir, forecastID, zonesVector, overlayVector)
-    plotMaps(cemfcst_plot, geoData, mapsDir, forecastID, zonesVector, overlayVector)
-    plotMaps(tercfcst_plot, geoData, mapsDir, forecastID, zonesVector, overlayVector)
+
+    #maskedscores=ff.getSkillMask(scores_plot, scores_plot)
+
+
+    ff.plotMaps(detfcst_plot, geoData, mapsDir, forecastID, zonesVector, annotation,overlayVector)
+    ff.plotMaps(probfcst_plot, geoData, mapsDir, forecastID, zonesVector, annotation, overlayVector)
+    ff.plotMaps(cemfcst_plot, geoData, mapsDir, forecastID, zonesVector, annotation, overlayVector)
+    ff.plotMaps(tercfcst_plot, geoData, mapsDir, forecastID, zonesVector, annotation, overlayVector)
 
     
-    showMessage("Plotting skill maps...")    
+    ff.showMessage("Plotting skill maps...")    
     #plotting skill scores
-    plotMaps(scores_plot, geoData, mapsDir, forecastID, zonesVector, overlayVector)
+    ff.plotMaps(scores_plot, geoData, mapsDir, forecastID, zonesVector, annotation, overlayVector)
 
     
-    showMessage("Plotting time series plots...") 
-    plotTimeSeries(cvHcst["value"],predictandHcst, detFcst, tercThresh, timeseriesDir, forecastID)
+    ff.showMessage("Plotting time series plots...") 
+    ff.plotTimeSeries(cvHcst["value"],predictandHcst, detFcst, tercThresh, timeseriesDir, forecastID, annotation)
     
     
-    showMessage("Plotting preprocessing diagnostics...")
+    ff.showMessage("Plotting preprocessing diagnostics...")
     if gl.config['preproc']=="PCR":
-        plotDiagsPCR(regressor, predictorHcst, predictandHcst, geoData, diagsDir, forecastID)
+        ff.plotDiagsPCR(regressor, predictorHcst, predictandHcst, geoData, diagsDir, forecastID, annotation)
 
     if gl.config['preproc']=="CCA":
-        plotDiagsCCA(regressor, predictorHcst, predictandHcst, geoData, diagsDir, forecastID)
+        ff.plotDiagsCCA(regressor, predictorHcst, predictandHcst, geoData, diagsDir, forecastID, annotation)
     
-    showMessage("Plotting regression diagnostics...")
-    plotDiagsRegression(predictandHcst, cvHcst, estHcst, tercThresh, detFcst, diagsDir, forecastID)
+    ff.showMessage("Plotting regression diagnostics...")
+    ff.plotDiagsRegression(predictandHcst, cvHcst, estHcst, tercThresh, detFcst, diagsDir, forecastID, annotation)
     
-    showMessage("All done!", "SUCCESS")
-    showMessage("Inspect log above for potential errors!", "SUCCESS")    
-    showMessage("All output written to {}".format(forecastDir), "SUCCESS")    
+    ff.showMessage("All done!", "SUCCESS")
+    ff.showMessage("Inspect log above for potential errors!", "SUCCESS")    
+    ff.showMessage("All output written to {}".format(forecastDir), "SUCCESS")    
     
     
     return
@@ -422,9 +442,9 @@ def browse(line_edit, mode='file', parent=None, caption="Select File", file_filt
     if combo_box is not None:
         # Read variables and populate the comboBox
         combo_box.clear()
-        variables=readVariablesFile(path)
+        variables=ff.readVariablesFile(path)
         if variables is None:
-            showMessage("Problem reading variables from file".format(_file),"NONCRITICAL")            
+            ff.showMessage("Problem reading variables from file".format(_file),"NONCRITICAL")            
         else:
             combo_box.addItems(variables)
 
@@ -552,21 +572,21 @@ preprocessors={
 
 
 if not os.path.exists(gl.configFile):
-    showMessage("config file {} does not exist. Making default config.".format(gl.configFile))
-    makeConfig()
+    ff.showMessage("config file {} does not exist. Making default config.".format(gl.configFile))
+    ff.makeConfig()
     
-check=readFunctionConfig()
+check=ff.readFunctionConfig()
 if check is None:
     print("failed")
 else:
     try:
-        showMessage("reading config from: {}".format(gl.configFile))
+        ff.showMessage("reading config from: {}".format(gl.configFile))
         with open(gl.configFile, "r") as f:
             gl.config = json.load(f)
-        populateGui()
+        ff.populateGui()
     except:    
-        showMessage("config file corrupted. Making default config.".format(gl.configFile))
-        makeConfig()
-        populateGui()
+        ff.showMessage("config file corrupted. Making default config.".format(gl.configFile))
+        ff.makeConfig()
+        ff.populateGui()
     
 sys.exit(app.exec_())

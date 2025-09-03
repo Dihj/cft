@@ -58,15 +58,19 @@ predictorSources={
 }
 
 fcstpredSources={
-    "SST_GEOSS2S_IRIDL": ["SST forecasted by GEOSS2S (NASA)", "https://iridl.ldeo.columbia.edu/SOURCES/.Models/.NMME/.NASA-GEOSS2S/.HINDCAST/.MONTHLY/.sst/[M]/average/SOURCES/.Models/.NMME/.NASA-GEOSS2S/.FORECAST/.MONTHLY/.sst/[M]/average/appendstream/S/(0000 1 {} {}-{})/VALUES/L/{}/{}/RANGEEDGES/[L]//keepgrids/average/Y/{}/{}/RANGEEDGES/X/{}/{}/RANGEEDGES/-999/setmissing_value/data.nc",1981],
-    "SST_CCSM4_IRIDL": ["SST forecasted by COLA-RSMAS-CCSM4", "https://iridl.ldeo.columbia.edu/SOURCES/.Models/.NMME/.COLA-RSMAS-CCSM4/.MONTHLY/.sst/[M]/average/S/(0000 1 {} {}-{})/VALUES/L/{}/{}/RANGEEDGES/[L]//keepgrids/average/Y/{}/{}/RANGEEDGES/X/{}/{}/RANGEEDGES/-999/setmissing_value/data.nc", 1981],
-    "SST_CFSv2_IRIDL": ["SST forecasted by CFSv2 (NCEP)", "https://iridl.ldeo.columbia.edu/SOURCES/.Models/.NMME/.NCEP-CFSv2/.HINDCAST/.PENTAD_SAMPLES_FULL/.sst/[M]/average/S/(0000 1 {} {}-{})/VALUES/L/{}/{}/RANGEEDGES/[L]//keepgrids/average/Y/{}/{}/RANGEEDGES/X/{}/{}/RANGEEDGES/-999/setmissing_value/data.nc", 1981],
-    "PRCP_GEOSS2S_IRIDL": ["Rainfall forecasted by GEOSS2S (NASA)", "https://iridl.ldeo.columbia.edu/SOURCES/.Models/.NMME/.NASA-GEOSS2S/.HINDCAST/.MONTHLY/.prec/[M]/average/SOURCES/.Models/.NMME/.NASA-GEOSS2S/.FORECAST/.MONTHLY/.prec/[M]/average/appendstream/S/(0000 1 {} {}-{})/VALUES/L/{}/{}/RANGEEDGES/[L]//keepgrids/average/Y/{}/{}/RANGEEDGES/X/{}/{}/RANGEEDGES/-999/setmissing_value/data.nc", 1981],
-    "PRCP_CCSM4_IRIDL": ["Rainfall forecasted by COLA-RSMAS-CCSM4", "https://iridl.ldeo.columbia.edu/SOURCES/.Models/.NMME/.COLA-RSMAS-CCSM4/.MONTHLY/.prec/[M]/average/S/(0000 1 {} {}-{})/VALUES/L/{}/{}/RANGEEDGES/[L]//keepgrids/average/Y/{}/{}/RANGEEDGES/X/{}/{}/RANGEEDGES/-999/setmissing_value/data.nc", 1981],
-    "PRCP_CFSv2_IRIDL": ["Rainfall forecasted by CFSv2 (NCEP)", "https://iridl.ldeo.columbia.edu/SOURCES/.Models/.NMME/.NCEP-CFSv2/.HINDCAST/.PENTAD_SAMPLES_FULL/.prec/[M]/average/S/(0000 1 {} {}-{})/VALUES/L/{}/{}/RANGEEDGES/[L]//keepgrids/average/Y/{}/{}/RANGEEDGES/X/{}/{}/RANGEEDGES/-999/setmissing_value/data.nc", 1981],
-    "z500_GEOSS2S_IRIDL": ["z500 forecasted by GEOSS2S (NASA)", "https://iridl.ldeo.columbia.edu/SOURCES/.Models/.NMME/.NASA-GEOSS2S/.HINDCAST/.MONTHLY/.h500/[M]/average/SOURCES/.Models/.NMME/.NASA-GEOSS2S/.FORECAST/.MONTHLY/.h500/[M]/average/appendstream/S/(0000 1 {} {}-{})/VALUES/L/{}/{}/RANGEEDGES/[L]//keepgrids/average/Y/{}/{}/RANGEEDGES/X/{}/{}/RANGEEDGES/-999/setmissing_value/data.nc", 1981],
-    "z200_CCSM4_IRIDL": ["z200 forecasted by COLA-RSMAS-CCSM4", "https://iridl.ldeo.columbia.edu/SOURCES/.Models/.NMME/.COLA-RSMAS-CCSM4/.MONTHLY/.gz/[M]/average/S/(0000 1 {} {}-{})/VALUES/L/{}/{}/RANGEEDGES/[L]//keepgrids/average/Y/{}/{}/RANGEEDGES/X/{}/{}/RANGEEDGES/-999/setmissing_value/data.nc", 1981],
-    "z200_CFSv2_IRIDL": ["z200 forecasted by CFSv2 (NCEP)", "https://iridl.ldeo.columbia.edu/SOURCES/.Models/.NMME/.NCEP-CFSv2/.HINDCAST/.PENTAD_SAMPLES_FULL/.hgt/[M]/average/S/(0000 1 {} {}-{})/VALUES/L/{}/{}/RANGEEDGES/[L]//keepgrids/average/Y/{}/{}/RANGEEDGES/X/{}/{}/RANGEEDGES/-999/setmissing_value/data.nc", 1981],
+    "SST_GEOSS2S_IRIDL": ["SST forecasted by GEOSS2S (NASA)", "https://iridl.ldeo.columbia.edu/SOURCES/.Models/.NMME/.NASA-GEOSS2S/.HINDCAST/.MONTHLY/.sst/[M]/average/SOURCES/.Models/.NMME/.NASA-GEOSS2S/.FORECAST/.MONTHLY/.sst/[M]/average/appendstream/S/(0000 1 {} {}-{})/VALUES/L/{}/{}/RANGEEDGES/[L]//keepgrids/average/Y/{}/{}/RANGEEDGES/X/{}/{}/RANGEEDGES/-999/setmissing_value/data.nc",1981,True],
+    "SST_CCSM4_IRIDL": ["SST forecasted by COLA-RSMAS-CCSM4", "https://iridl.ldeo.columbia.edu/SOURCES/.Models/.NMME/.COLA-RSMAS-CCSM4/.MONTHLY/.sst/[M]/average/S/(0000 1 {} {}-{})/VALUES/L/{}/{}/RANGEEDGES/[L]//keepgrids/average/Y/{}/{}/RANGEEDGES/X/{}/{}/RANGEEDGES/-999/setmissing_value/data.nc", 1981, True],
+    "SST_CFSv2_IRIDL": ["SST forecasted by CFSv2 (NCEP)", "https://iridl.ldeo.columbia.edu/SOURCES/.Models/.NMME/.NCEP-CFSv2/.HINDCAST/.PENTAD_SAMPLES_FULL/.sst/[M]/average/S/(0000 1 {} {}-{})/VALUES/L/{}/{}/RANGEEDGES/[L]//keepgrids/average/Y/{}/{}/RANGEEDGES/X/{}/{}/RANGEEDGES/-999/setmissing_value/data.nc", 1981,True],
+    "PRCP_GEOSS2S_IRIDL": ["Rainfall forecasted by GEOSS2S (NASA)", "https://iridl.ldeo.columbia.edu/SOURCES/.Models/.NMME/.NASA-GEOSS2S/.HINDCAST/.MONTHLY/.prec/[M]/average/SOURCES/.Models/.NMME/.NASA-GEOSS2S/.FORECAST/.MONTHLY/.prec/[M]/average/appendstream/S/(0000 1 {} {}-{})/VALUES/L/{}/{}/RANGEEDGES/[L]//keepgrids/average/Y/{}/{}/RANGEEDGES/X/{}/{}/RANGEEDGES/-999/setmissing_value/data.nc", 1981,True],
+    "PRCP_CCSM4_IRIDL": ["Rainfall forecasted by COLA-RSMAS-CCSM4", "https://iridl.ldeo.columbia.edu/SOURCES/.Models/.NMME/.COLA-RSMAS-CCSM4/.MONTHLY/.prec/[M]/average/S/(0000 1 {} {}-{})/VALUES/L/{}/{}/RANGEEDGES/[L]//keepgrids/average/Y/{}/{}/RANGEEDGES/X/{}/{}/RANGEEDGES/-999/setmissing_value/data.nc", 1981,True],
+    "PRCP_CFSv2_IRIDL": ["Rainfall forecasted by CFSv2 (NCEP)", "https://iridl.ldeo.columbia.edu/SOURCES/.Models/.NMME/.NCEP-CFSv2/.HINDCAST/.PENTAD_SAMPLES_FULL/.prec/[M]/average/S/(0000 1 {} {}-{})/VALUES/L/{}/{}/RANGEEDGES/[L]//keepgrids/average/Y/{}/{}/RANGEEDGES/X/{}/{}/RANGEEDGES/-999/setmissing_value/data.nc", 1981,True],
+    "z500_GEOSS2S_IRIDL": ["z500 forecasted by GEOSS2S (NASA)", "https://iridl.ldeo.columbia.edu/SOURCES/.Models/.NMME/.NASA-GEOSS2S/.HINDCAST/.MONTHLY/.h500/[M]/average/SOURCES/.Models/.NMME/.NASA-GEOSS2S/.FORECAST/.MONTHLY/.h500/[M]/average/appendstream/S/(0000 1 {} {}-{})/VALUES/L/{}/{}/RANGEEDGES/[L]//keepgrids/average/Y/{}/{}/RANGEEDGES/X/{}/{}/RANGEEDGES/-999/setmissing_value/data.nc", 1981,True],
+    "z200_CCSM4_IRIDL": ["z200 forecasted by COLA-RSMAS-CCSM4", "https://iridl.ldeo.columbia.edu/SOURCES/.Models/.NMME/.COLA-RSMAS-CCSM4/.MONTHLY/.gz/[M]/average/S/(0000 1 {} {}-{})/VALUES/L/{}/{}/RANGEEDGES/[L]//keepgrids/average/Y/{}/{}/RANGEEDGES/X/{}/{}/RANGEEDGES/-999/setmissing_value/data.nc", 1981,True],
+    "z200_CFSv2_IRIDL": ["z200 forecasted by CFSv2 (NCEP)", "https://iridl.ldeo.columbia.edu/SOURCES/.Models/.NMME/.NCEP-CFSv2/.HINDCAST/.PENTAD_SAMPLES_FULL/.hgt/[M]/average/S/(0000 1 {} {}-{})/VALUES/L/{}/{}/RANGEEDGES/[L]//keepgrids/average/Y/{}/{}/RANGEEDGES/X/{}/{}/RANGEEDGES/-999/setmissing_value/data.nc", 1981,True],
+    "SST_SEAS51_IRIDL": ["SST forecasted by SEAS51 (ECMWF)", "https://iridl.ldeo.columbia.edu/SOURCES/.EU/.Copernicus/.CDS/.C3S/.ECMWF/.SEAS51_iri2/.hindcast/.sst/[M]/average/SOURCES/.EU/.Copernicus/.CDS/.C3S/.ECMWF/.SEAS51_iri2/.forecast/.sst/[M]/average/appendstream/S/(0000 1 {} {}-{})/VALUES/L/{}/{}/RANGEEDGES/[L]//keepgrids/average/Y/{}/{}/RANGEEDGES/X/{}/{}/RANGEEDGES/-999/setmissing_value/data.nc", 1981,False],    
+    "SST_CPS3_IRIDL": ["SST forecasted by CPS3 (JMA)", "https://iridl.ldeo.columbia.edu/SOURCES/.EU/.Copernicus/.CDS/.C3S/.JMA/.CPS3/.hindcast/.sst/[M]/average/SOURCES/.EU/.Copernicus/.CDS/.C3S/.JMA/.CPS3/.forecast/.sst/[M]/average/appendstream/S/(0000 1 {} {}-{})/VALUES/L/{}/{}/RANGEEDGES/[L]//keepgrids/average/Y/{}/{}/RANGEEDGES/X/{}/{}/RANGEEDGES/-999/setmissing_value/data.nc", 1981, False],
+    "SST_System9_IRIDL": ["SST forecasted by System9 (MeteoFrance)", "https://iridl.ldeo.columbia.edu/SOURCES/.EU/.Copernicus/.CDS/.C3S/.Meteo_France/.System9/.hindcast/.sst/[M]/average/SOURCES/.EU/.Copernicus/.CDS/.C3S/.Meteo_France/.System9/.forecast/.sst/[M]/average/appendstream/S/(0000 1 {} {}-{})/VALUES/L/{}/{}/RANGEEDGES/[L]//keepgrids/average/Y/{}/{}/RANGEEDGES/X/{}/{}/RANGEEDGES/-999/setmissing_value/data.nc", 1981, False],
+    "SST_SPSv4_IRIDL": ["SST forecasted by SPSv4 (CMCC)", "https://iridl.ldeo.columbia.edu/SOURCES/.EU/.Copernicus/.CDS/.C3S/.CMCC/.SPSv4/.hindcast/.sst/[M]/average/SOURCES/.EU/.Copernicus/.CDS/.C3S/.CMCC/.SPSv4/.forecast/.sst/[M]/average/appendstream/S/(0000 1 {} {}-{})/VALUES/L/{}/{}/RANGEEDGES/[L]//keepgrids/average/Y/{}/{}/RANGEEDGES/X/{}/{}/RANGEEDGES/-999/setmissing_value/data.nc", 1981,False],           
 }
 
 #    "SST_CanSIPS-IC4_IRIDL": ["SST forecasted by CanSIPS-IC4", "https://iridl.ldeo.columbia.edu/SOURCES/.Models/.NMME/.CanSIPS-IC4/.HINDCAST/.MONTHLY/.sst/[M]/average/SOURCES/.Models/.NMME/.CanSIPS-IC4/.FORECAST/.MONTHLY/.sst/[M]/average/appendstream/S/(0000 1 {} {}-{})/VALUES/L/{}/{}/RANGEEDGES/[L]//keepgrids/average/Y/{}/{}/RANGEEDGES/X/{}/{}/RANGEEDGES/-999/setmissing_value/data.nc", 1981],
@@ -561,8 +565,8 @@ def downloadFcstPredictor():
     _forecastmon=months[_forecasttime.month-1]
 
     url=fcstpredSources[_predictorcode][1]
-    
     firstavailyear=fcstpredSources[_predictorcode][2]
+    available=fcstpredSources[_predictorcode][3]
     
     if float(firstavailyear)>float(firstyear):
         showMessage("\nAdjusting requested first year to first year for which data are available. {} -> {}".format(firstyear, firstavailyear), "NONCRITICAL")
@@ -612,6 +616,10 @@ def downloadFcstPredictor():
 
         url=url.format(_forecastmon, firstyear, _forecastyear,leadtimestart,leadtimeend,south,north,west,east)
 
+        if not available:
+            showMessage("These data could not be downloaded authomatically because it requires signing licence. Copy the url below, paste it to your browser and sign in the licence to download data manually. Remember - you will have to rename downloaded file.\n{}".format(url), "ERROR")
+            return None
+            
         response=downloadUrl(url)
 
         if response is None:

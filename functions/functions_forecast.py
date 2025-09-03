@@ -7,6 +7,8 @@ from matplotlib.patches import Patch
 import xarray as xr
 from scipy.stats import pearsonr
 
+from shapely.validation import explain_validity
+
 from sklearn.preprocessing import StandardScaler
 from sklearn.cross_decomposition import CCA
 from sklearn.decomposition import PCA
@@ -114,25 +116,6 @@ def readConfigFile(file):
         return config
 
     
-
-
-#can be read from json - potentially editable by user
-#regressor_config = {
-#    "OLS":["Linear regression", {}],
-#    "Lasso":["Lasso regression", {'alpha': 0.01}],
-#    "Ridge":["Ridge regression", {'alpha': 1.0}],
-#    "RF":["Random Forest", {'n_estimators': 100, 'max_depth': 5}],
-#    "MLP":["Multi Layer Perceptron", {'hidden_layer_sizes': (50, 25), 'max_iter': 1000, 'random_state': 0}],
-#    "Trees":["Decision Trees", {'max_depth': 2}]
-#}
-
-
-#preprocessor_config={
-#    "PCR":["Principal Component Regression (PCR)", {}],
-#    "CCA":["Canonical Corelation Analysis (CCA)", {}],
-#    "NONE":["No preprocessing", {}],
-#}
-
 
 def showMessage(_message, _type="RUNTIME"):
     msgColors={"ERROR": "red",
@@ -581,11 +564,32 @@ def readNetcdf(ncfile, ncvar):
     
     return(dat)
         
-
+def checkPolyValidity(_poly):
+    for idx, geom in enumerate(_poly.geometry):
+        if not geom.is_valid:
+            showMessage(f"Polygon at index {idx} is invalid: {explain_validity(geom)}", "ERROR")
+            return False
+    return True
+    
 #this calculates zonal mean over individual time steps
 def zonalMean(_grid, _poly):
     affine=_grid.rio.transform()
     _zonalmean=[]
+    #check for overlap
+    try:
+        zs=zonal_stats(_poly, 
+                   _grid[0,:,:].data, 
+                   affine=affine, 
+                   nodata=np.nan,
+                  all_touched=False)
+    except ValueError as e:
+        if "negative dimensions" in str(e):
+            # Likely polygon completely outside raster
+            showMessage("there is no overlap between raster and vector", "ERROR")
+            return None
+        else:
+            raise  # Re-raise unexpected errors
+
     for i in range(_grid.shape[0]):
         zs=zonal_stats(_poly, 
                        _grid[i,:,:].data, 
@@ -612,17 +616,15 @@ def aggregatePredictand(_data, _geodata, _poly):
         _data.rio.set_spatial_dims(x_dim='lon', y_dim='lat')        
         _data=_data.rio.write_crs("epsg:4326")
         _aggregated=zonalMean(_data, _poly)
-        
+        if _aggregated is None:
+            return None,None
+            
         showMessage("\tAverage values for {} regions derived from data for {} by {} grid".format(_aggregated.shape[1], _data.shape[1], _data.shape[2]))
     else:
         #this is if geodata is a geopandas object
         _points=_geodata.copy().join(_data.T)
         #joining polygons and points
-        print(_geodata)
-
         _joined = gpd.sjoin(_points, _poly, how="inner", predicate="within")
-        print(_joined)
-        #sys.exit()
         
         # Check if spatial matches were found before trying to rename index_right
         #if not _joined.empty and 'index_right' in _joined.columns:
@@ -1698,7 +1700,6 @@ colormaps={"percent_normal":{
         "whitelev":[],
         "tick_labels":None,
         "extend":"both"},
-           
     "normal":{
         "categorized":True,
         "nlev":11,
@@ -1764,6 +1765,9 @@ colormaps={"percent_normal":{
         "extend":"neither"}
 }
 
+skillMasks={
+"ROC_above":["ROC_above",0.5,"<"]
+}
 
 def nice_minmax(x,y=None, symmetric=False):
     # 1. Get global min and max
@@ -1817,15 +1821,37 @@ def nice_max(x):
 
     return lims    
     
+def getSkillMask(_vars, _skillscores):
+     if gl.targetType=="grid":
+        #no need to use geodata as _scores unstacks to proper xarray
+        dataxr=_vars.unstack().to_xarray().transpose("category","lat","lon")
+        skillxr=_skillscores.unstack().to_xarray().transpose("category","lat","lon")
+        outdata=[]
+        for cat in dataxr.category.values:
+            if cat in skillMasks.keys(): 
+                dat=dataxr[cat]
+                skillvar,skillthresh,skillsign=skillMask[cat]
+                skilldat=skillxr[cat]
+                if sign==">":
+                    mask=skilldat>skillthresh
+                else:
+                    mask=skilldat<skillthresh
+
+                dat=dat.where(mask)
+            outdata.append(dat)
+        if len(outdata)>0:
+            outdata=xr.concat(outdata)
+
+     if gl.targetType=="zones":
+        outdata=[]
+        for cat in _vars.index:
+            if cat in skillMasks.keys(): 
+                outdata.append(_vars[cat])
+
+     return outdata
+
+def plotMaps(_scores, _geoData, _figuresDir, _forecastID, _zonesVector, annotation, _overlayVector=None):
     
-def plotMaps(_scores, _geoData, _figuresDir, _forecastID, _zonesVector, _overlayVector=None):
-    annotation="Forecast for: {} {}".format(gl.config['fcstTargetSeas'], gl.config['fcstTargetYear'])
-    annotation+="\nIssued in: {} {}".format(gl.config['predictorMonth'], gl.config['predictorYear'])
-    annotation+="\nPredictor: {}".format(Path(gl.config["predictorFileName"]).stem)
-    annotation+="\nPredictand: {}".format(Path(gl.config["predictandFileName"]).stem)
-    annotation+="\nClimatological period: {}-{}".format(gl.config['climStartYr'], gl.config['climEndYr'])
-    
-        
     if gl.targetType=="grid":
         #no need to use geodata as _scores unstacks to proper xarray
         scoresxr=_scores.unstack().to_xarray().transpose("category","lat","lon")
@@ -2035,14 +2061,13 @@ def plotMaps(_scores, _geoData, _figuresDir, _forecastID, _zonesVector, _overlay
             
             
             
-def plotTimeSeries(_dethcst,_obs, _detfcst, _tercthresh, _figuresdir, _forecastid):
+def plotTimeSeries(_dethcst,_obs, _detfcst, _tercthresh, _figuresdir, _forecastid, annotation):
     if gl.targetType in ["zones","points"]:
         for entry in _obs.columns:
             _entry=sanitize_string(str(entry))
             outfile=Path(_figuresdir,"{}_{}_{}.jpg".format(gl.config['predictandVar'], _entry, _forecastid))
-            #showMessage("plotting {}".format(outfile))
 
-            fig=plt.figure(figsize=(7,4))
+            fig=plt.figure(figsize=(10,4))
             pl=fig.add_subplot(1,1,1)
 
             _obs[entry].plot(marker="o", label="observed", markersize=3)
@@ -2051,16 +2076,283 @@ def plotTimeSeries(_dethcst,_obs, _detfcst, _tercthresh, _figuresdir, _forecasti
             pl.axhline(_tercthresh.loc[0.33][entry], color="0.6")
             pl.axhline(_tercthresh.loc[0.66][entry], color="0.6", label="climatological terciles")
             pl.axhline(_tercthresh.loc[0.50][entry], color="0.8", label="climatological median")
-            pl.set_title("Hindcast and forecast for {} in {} in region: {}\nissued in {}".format(gl.config["predictandVar"], gl.config["fcstTargetSeas"],entry,gl.predictorDate.strftime("%b %Y")))
+
+            pl.axvline(pd.to_datetime("{}-01-01".format(gl.config["climStartYr"])), color="0.9", label="climatological period")
+            pl.axvline(pd.to_datetime("{}-12-31".format(gl.config["climEndYr"])), color="0.9", label="climatological period")
+            pl.set_title("Hindcast and forecast for {} in {} in region: {}".format(gl.config["predictandVar"], gl.config["fcstTargetSeas"],entry))
             pl.set_xlim((_obs.index[0]-pd.offsets.YearBegin(2)).strftime("%Y-%m-%d"), (_detfcst.index[0]+pd.offsets.YearBegin(2)).strftime("%Y-%m-%d")
 )
-            plt.legend()
+
+            pl.text(0,-0.15,annotation,fontsize=6, transform=pl.transAxes, va="top")
+            plt.legend(loc=(1.05, 0.3))
             
+            plt.subplots_adjust(bottom=0.25, right=0.7)
             plt.savefig(outfile)            
             plt.close()
         #showMessage("done")
     else:    
         showMessage("Forecasting target is a grid, time series cannot be plotted.", "INFO")
+
+
+
+def plotDiagsCCA(_regressor, predictorhcst, predictandhcst, _geodata, _diagsdir, _forecastid, annotation):
+    #plotting predictor scores
+    canpatX=_regressor.can_pattern_X 
+
+    canpatX=pd.DataFrame(canpatX, index=predictorhcst.columns, columns=["Mode{}".format(x+1) for x in range(canpatX.shape[1])])
+    canpatX=canpatX.to_xarray().sortby("lat").sortby("lon")
+
+    for pc in canpatX.data_vars:
+        outfile=Path(_diagsdir,"cannonical-pattern_predictor_{}_{}.jpg".format(pc,_forecastid))
+        #showMessage("plotting {}".format(outfile))
+
+        fig=plt.figure(figsize=(10,4))
+
+        pl=fig.add_subplot(1,1,1, projection=ccrs.PlateCarree())
+
+        canpatX[pc].plot(ax=pl)
+        pl.set_title("Predictor's {} pattern".format(pc))
+
+        pl.text(0.1,-0.15,annotation,fontsize=6, transform=pl.transAxes, va="top")
+
+        plt.subplots_adjust(bottom=0.25)
+        plt.savefig(outfile)            
+        plt.close()
+
+    if gl.targetType=="grid":
+        canpatY=_regressor.can_pattern_Y
+        
+        canpatY=pd.DataFrame(canpatY, index=predictandhcst.columns, columns=["Mode{}".format(x+1) for x in range(canpatY.shape[1])])
+        canpatY=canpatY.to_xarray().sortby("lat").sortby("lon")
+
+        for pc in canpatY.data_vars:
+            outfile=Path(_diagsdir,"cannonical-pattern_predictand_{}_{}.jpg".format(pc,_forecastid))
+            #showMessage("plotting {}".format(outfile))
+
+            fig=plt.figure(figsize=(10,4))
+
+            pl=fig.add_subplot(1,1,1, projection=ccrs.PlateCarree())
+
+            canpatY[pc].plot(ax=pl)
+            pl.set_title("Predictand's {} pattern \n{}".format(pc, _forecastid))
+
+            pl.text(0.1,-0.15,annotation,fontsize=6, transform=pl.transAxes, va="top")
+
+            plt.subplots_adjust(bottom=0.25)
+            plt.savefig(outfile)            
+            plt.close()
+        
+
+    scoresX=_regressor.scoresX
+    scoresX=pd.DataFrame(scoresX, index=predictandhcst.index, columns=["Mode{}".format(x+1) for x in range(scoresX.shape[1])])
+
+    scoresY=_regressor.scoresY
+    scoresY=pd.DataFrame(scoresY, index=predictandhcst.index, columns=["Mode{}".format(x+1) for x in range(scoresY.shape[1])])
+
+    for mode in scoresX.columns:
+        outfile=Path(_diagsdir,"CCA-scores_{}_{}.jpg".format(mode, _forecastid))
+        #showMessage("plotting {}".format(outfile))
+
+        fig=plt.figure(figsize=(7,4))
+        pl=fig.add_subplot(1,1,1)
+
+        scoresX[mode].plot(ax=pl, label="predictor")
+        scoresY[mode].plot(ax=pl, label="predictand")
+        pl.set_title("Scores of CCA {}".format(mode))
+        plt.legend()
+
+        pl.text(0.1,-0.15,annotation,fontsize=6, transform=pl.transAxes, va="top")
+
+        plt.subplots_adjust(bottom=0.25)
+        plt.savefig(outfile)            
+        plt.close()
+
+        
+    #plotting correlations        
+    outfile=Path(_diagsdir,"CCA-correlations_{}.jpg".format( _forecastid))
+    #showMessage("plotting {}".format(outfile))
+    
+    corrs = [np.corrcoef(scoresX.iloc[:, i], scoresY.iloc[:, i])[0,1] for i in range(scoresX.shape[1])]
+
+    fig=plt.figure(figsize=(7,4))
+    pl=fig.add_subplot(1,1,1)
+
+    bars=pl.bar(range(1, len(corrs)+1), corrs)
+    # annotate each bar with its value
+    for bar, val in zip(bars, corrs):
+        height = bar.get_height()
+        pl.text(bar.get_x() + bar.get_width()/2, height + 0.02, f"{val:.2f}",
+                ha='center', va='bottom')
+    pl.set_xticks(range(1,len(corrs)+1))
+    pl.set_ylim(0,1.1)
+    pl.set_xlabel("Canonical mode")
+    pl.set_ylabel("Canonical correlation")
+    pl.set_title("Strength of canonical correlations")
+
+    pl.text(0.1,-0.15,annotation,fontsize=6, transform=pl.transAxes, va="top")
+    plt.subplots_adjust(bottom=0.25)
+    plt.savefig(outfile)            
+    plt.close()
+
+    
+    
+    
+def plotDiagsPCR(_regressor, predictorhcst, predictandhcst, _geodata, _diagsdir, _forecastid, annotation):
+    #plotting predictor scores
+    scores=_regressor.scores
+    scores=pd.DataFrame(scores, index=predictandhcst.index, columns=["PC{}".format(x+1) for x in range(scores.shape[1])])
+
+    outfile=Path(_diagsdir,"PCA-scores_predictand_{}.jpg".format(_forecastid))
+    #showMessage("plotting {}".format(outfile))
+
+    fig=plt.figure(figsize=(7,4))
+    pl=fig.add_subplot(1,1,1)
+
+    scores.plot(ax=pl)
+    pl.set_title("Scores of retained PCs".format())
+
+    pl.text(0.1,-0.15,annotation,fontsize=6, transform=pl.transAxes, va="top")
+    plt.subplots_adjust(bottom=0.25)
+    plt.savefig(outfile)            
+    plt.close()
+
+
+    #plotting loadings
+    loadings=_regressor.loadings
+
+    loadings=pd.DataFrame(loadings, index=predictorhcst.columns, columns=["PC{}".format(x+1) for x in range(loadings.shape[1])])
+    loadings=loadings.to_xarray().sortby("lat").sortby("lon")
+
+    
+    for pc in loadings.data_vars:
+        outfile=Path(_diagsdir,"{}-loadings_predictand_{}.jpg".format(pc,_forecastid))
+        #showMessage("plotting {}".format(outfile))
+
+        fig=plt.figure(figsize=(10,4))
+        
+        pl=fig.add_subplot(1,1,1, projection=ccrs.PlateCarree())
+
+        loadings[pc].plot(ax=pl)
+        pl.set_title("{} loadings".format(pc))
+
+        pl.text(0,-0.15,annotation,fontsize=6, transform=pl.transAxes, va="top")
+        plt.subplots_adjust(bottom=0.25)
+        plt.savefig(outfile)            
+        plt.close()
+        
+        
+
+def plotDiagsRegression(predictandhcst, cvhcst, esthcst, tercthresh, detfcst, _diagsdir, _forecastid, annotation):
+    
+    if gl.targetType!="grid":
+        for entry in predictandhcst.columns:
+            entryw=sanitize_string(str(entry))
+            outfile=Path(_diagsdir,"regression-diags_{}_{}.jpg".format(entryw,_forecastid))
+            fig=plt.figure(figsize=(10,6))
+
+            pl=fig.add_subplot(2,3,1)
+
+            obs=predictandhcst.loc[:,entry]
+            hcst=cvhcst["value"].loc[:,entry]
+
+            xmin,xmax=nice_minmax(obs,hcst)
+
+            pl.plot(obs,hcst,"o")
+            pl.set_ylim(xmin,xmax)
+            pl.set_xlim(xmin,xmax)
+
+            pl.set_xlabel("observations")
+            pl.set_ylabel("out-of-sample forecast")
+
+            pl.set_title("out-of-sample forecast \nvs observations")
+
+
+
+            pl=fig.add_subplot(2,3,2)
+
+            hcst=esthcst["value"].loc[:,entry]
+            xmin,xmax=nice_minmax(obs,hcst)
+
+            pl.plot(obs,hcst,"o")
+            pl.set_ylim(xmin,xmax)
+            pl.set_xlim(xmin,xmax)
+
+            pl.set_xlabel("observations")
+            pl.set_ylabel("in-sample estimate")
+
+            pl.set_title("in-sample estimate \nvs observations")
+
+            pl=fig.add_subplot(2,3,3)
+
+            
+            
+            
+            obs=predictandhcst.loc[:,entry]
+            hcst=cvhcst["value"].loc[:,entry]
+            resid=hcst-obs
+            
+            hcstfit=esthcst["value"].loc[:,entry]
+            residfit=hcstfit-obs
+
+            xmin,xmax=nice_minmax(obs,resid)
+
+            pl.plot(obs,resid,"o")
+            pl.set_ylim(xmin,xmax)
+            pl.set_xlim(xmin,xmax)
+
+            pl.set_xlabel("observations")
+            pl.set_ylabel("out-of-sample residuals")
+
+            pl.set_title("out-of-sample\n residual vs observations")
+
+
+
+            
+            pl=fig.add_subplot(2,3,4)
+
+            pl.hist(resid, label="out-of-sample", alpha=0.5)
+            pl.hist(residfit, label="in-sample", alpha=0.5)
+
+            pl.set_xlabel("residuals")
+            pl.set_ylabel("frequency")
+
+            pl.set_title("error distribution")
+
+            plt.legend()
+            
+            
+            
+            pl=fig.add_subplot(2,3,5)
+            
+            hcst=cvhcst["value"].loc[:,entry]
+            
+            resid=hcst-obs
+            
+            fcst=detfcst["value"].loc[:,entry]
+
+            error=fcst.values+resid
+            
+            pl.hist(error, label="forecast error", alpha=0.5)
+            
+            pl.axvline(fcst.values, color="red", label="forecast")
+            
+            pl.axvline(tercthresh.loc[0.33][entry], color="blue", label="terciles")
+            pl.axvline(tercthresh.loc[0.66][entry], color="blue", label="_terciles")
+            
+
+            pl.set_xlabel("value")
+            pl.set_ylabel("frequency")
+            plt.legend()
+            pl.set_title("forecast error distribution")
+
+            
+            plt.suptitle("zone/location: {} \n{}\n".format(entry, _forecastid))
+            
+            pl.text(1.1,0,annotation,fontsize=6, transform=pl.transAxes, va="top")
+            plt.subplots_adjust(top=0.85, left=0.1, right=0.9, wspace=0.5, hspace=0.5)
+            plt.savefig(outfile)
+            plt.close()
+
 
 
 def getTercCategory(_data):
@@ -2074,6 +2366,8 @@ def getTercCategory(_data):
         temp.columns=pd.MultiIndex.from_tuples([('tercile_category',col) for col in temp.columns], names=["category",temp.columns.name])
 
     return temp
+
+
 
 
 def getCemCategory(_data):
@@ -2334,249 +2628,6 @@ def writeOutput(_data, _outputfile):
         _data.to_csv(_outputfile)
     #showMessage("written {}".format(_outputfile), "INFO")
     return    
-
-
-def plotDiagsCCA(_regressor, predictorhcst, predictandhcst, _geodata, _diagsdir, _forecastid):
-    #plotting predictor scores
-    canpatX=_regressor.can_pattern_X 
-
-    canpatX=pd.DataFrame(canpatX, index=predictorhcst.columns, columns=["Mode{}".format(x+1) for x in range(canpatX.shape[1])])
-    canpatX=canpatX.to_xarray().sortby("lat").sortby("lon")
-
-    for pc in canpatX.data_vars:
-        outfile=Path(_diagsdir,"cannonical-pattern_predictor_{}_{}.jpg".format(pc,_forecastid))
-        #showMessage("plotting {}".format(outfile))
-
-        fig=plt.figure(figsize=(10,3))
-
-        pl=fig.add_subplot(1,1,1, projection=ccrs.PlateCarree())
-
-        canpatX[pc].plot(ax=pl)
-        pl.set_title("Predictor's {} pattern \n{}".format(pc, _forecastid))
-
-        plt.savefig(outfile)            
-        plt.close()
-
-    if gl.targetType=="grid":
-        canpatY=_regressor.can_pattern_Y
-        
-        canpatY=pd.DataFrame(canpatY, index=predictandhcst.columns, columns=["Mode{}".format(x+1) for x in range(canpatY.shape[1])])
-        canpatY=canpatY.to_xarray().sortby("lat").sortby("lon")
-
-        for pc in canpatY.data_vars:
-            outfile=Path(_diagsdir,"cannonical-pattern_predictand_{}_{}.jpg".format(pc,_forecastid))
-            #showMessage("plotting {}".format(outfile))
-
-            fig=plt.figure(figsize=(10,3))
-
-            pl=fig.add_subplot(1,1,1, projection=ccrs.PlateCarree())
-
-            canpatY[pc].plot(ax=pl)
-            pl.set_title("Predictand's {} pattern \n{}".format(pc, _forecastid))
-
-            plt.savefig(outfile)            
-            plt.close()
-        
-
-    scoresX=_regressor.scoresX
-    scoresX=pd.DataFrame(scoresX, index=predictandhcst.index, columns=["Mode{}".format(x+1) for x in range(scoresX.shape[1])])
-
-    scoresY=_regressor.scoresY
-    scoresY=pd.DataFrame(scoresY, index=predictandhcst.index, columns=["Mode{}".format(x+1) for x in range(scoresY.shape[1])])
-
-    for mode in scoresX.columns:
-        outfile=Path(_diagsdir,"CCA-scores_{}_{}.jpg".format(mode, _forecastid))
-        #showMessage("plotting {}".format(outfile))
-
-        fig=plt.figure(figsize=(7,4))
-        pl=fig.add_subplot(1,1,1)
-
-        scoresX[mode].plot(ax=pl, label="predictor")
-        scoresY[mode].plot(ax=pl, label="predictand")
-        pl.set_title("Scores of CCA {}\n{}".format(mode, _forecastid))
-        plt.legend()
-
-        plt.savefig(outfile)            
-        plt.close()
-
-        
-    #plotting correlations        
-    outfile=Path(_diagsdir,"CCA-correlations_{}.jpg".format( _forecastid))
-    #showMessage("plotting {}".format(outfile))
-    
-    corrs = [np.corrcoef(scoresX.iloc[:, i], scoresY.iloc[:, i])[0,1] for i in range(scoresX.shape[1])]
-
-    fig=plt.figure(figsize=(7,4))
-    pl=fig.add_subplot(1,1,1)
-
-    bars=pl.bar(range(1, len(corrs)+1), corrs)
-    # annotate each bar with its value
-    for bar, val in zip(bars, corrs):
-        height = bar.get_height()
-        pl.text(bar.get_x() + bar.get_width()/2, height + 0.02, f"{val:.2f}",
-                ha='center', va='bottom')
-    pl.set_ylim(0,1.1)
-    pl.set_xlabel("Canonical mode")
-    pl.set_ylabel("Canonical correlation")
-    pl.set_title("Strength of canonical correlations")
-
-    plt.savefig(outfile)            
-    plt.close()
-
-    
-    
-    
-def plotDiagsPCR(_regressor, predictorhcst, predictandhcst, _geodata, _diagsdir, _forecastid):
-    #plotting predictor scores
-    scores=_regressor.scores
-    scores=pd.DataFrame(scores, index=predictandhcst.index, columns=["PC{}".format(x+1) for x in range(scores.shape[1])])
-
-    outfile=Path(_diagsdir,"PCA-scores_predictand_{}.jpg".format(_forecastid))
-    #showMessage("plotting {}".format(outfile))
-
-    fig=plt.figure(figsize=(7,4))
-    pl=fig.add_subplot(1,1,1)
-
-    scores.plot(ax=pl)
-    pl.set_title("Scores of retained PCs \n{}".format(_forecastid))
-
-    plt.savefig(outfile)            
-    plt.close()
-
-
-    #plotting loadings
-    loadings=_regressor.loadings
-
-    loadings=pd.DataFrame(loadings, index=predictorhcst.columns, columns=["PC{}".format(x+1) for x in range(loadings.shape[1])])
-    loadings=loadings.to_xarray().sortby("lat").sortby("lon")
-
-    
-    for pc in loadings.data_vars:
-        outfile=Path(_diagsdir,"{}-loadings_predictand_{}.jpg".format(pc,_forecastid))
-        #showMessage("plotting {}".format(outfile))
-
-        fig=plt.figure(figsize=(10,3))
-        
-        pl=fig.add_subplot(1,1,1, projection=ccrs.PlateCarree())
-
-        loadings[pc].plot(ax=pl)
-        pl.set_title("{} loadings \n{}".format(pc, _forecastid))
-
-        plt.savefig(outfile)            
-        plt.close()
-        
-        
-
-def plotDiagsRegression(predictandhcst, cvhcst, esthcst, tercthresh, detfcst, _diagsdir, _forecastid):
-    
-    if gl.targetType!="grid":
-        for entry in predictandhcst.columns:
-            entryw=sanitize_string(str(entry))
-            outfile=Path(_diagsdir,"regression-diags_{}_{}.jpg".format(entryw,_forecastid))
-            fig=plt.figure(figsize=(10,6))
-
-            pl=fig.add_subplot(2,3,1)
-
-            obs=predictandhcst.loc[:,entry]
-            hcst=cvhcst["value"].loc[:,entry]
-
-            xmin,xmax=nice_minmax(obs,hcst)
-
-            pl.plot(obs,hcst,"o")
-            pl.set_ylim(xmin,xmax)
-            pl.set_xlim(xmin,xmax)
-
-            pl.set_xlabel("observations")
-            pl.set_ylabel("out-of-sample forecast")
-
-            pl.set_title("out-of-sample forecast \nvs observations")
-
-
-
-            pl=fig.add_subplot(2,3,2)
-
-            hcst=esthcst["value"].loc[:,entry]
-            xmin,xmax=nice_minmax(obs,hcst)
-
-            pl.plot(obs,hcst,"o")
-            pl.set_ylim(xmin,xmax)
-            pl.set_xlim(xmin,xmax)
-
-            pl.set_xlabel("observations")
-            pl.set_ylabel("in-sample estimate")
-
-            pl.set_title("in-sample estimate \nvs observations")
-
-            pl=fig.add_subplot(2,3,3)
-
-            
-            
-            
-            obs=predictandhcst.loc[:,entry]
-            hcst=cvhcst["value"].loc[:,entry]
-            resid=hcst-obs
-            
-            hcstfit=esthcst["value"].loc[:,entry]
-            residfit=hcstfit-obs
-
-            xmin,xmax=nice_minmax(obs,resid)
-
-            pl.plot(obs,resid,"o")
-            pl.set_ylim(xmin,xmax)
-            pl.set_xlim(xmin,xmax)
-
-            pl.set_xlabel("observations")
-            pl.set_ylabel("out-of-sample residuals")
-
-            pl.set_title("out-of-sample\n residual vs observations")
-
-
-
-            
-            pl=fig.add_subplot(2,3,4)
-
-            pl.hist(resid, label="out-of-sample", alpha=0.5)
-            pl.hist(residfit, label="in-sample", alpha=0.5)
-
-            pl.set_xlabel("residuals")
-            pl.set_ylabel("frequency")
-
-            pl.set_title("error distribution")
-
-            plt.legend()
-            
-            
-            
-            pl=fig.add_subplot(2,3,5)
-            
-            hcst=cvhcst["value"].loc[:,entry]
-            
-            resid=hcst-obs
-            
-            fcst=detfcst["value"].loc[:,entry]
-
-            error=fcst.values+resid
-            
-            pl.hist(error, label="forecast error", alpha=0.5)
-            
-            pl.axvline(fcst.values, color="red", label="forecast")
-            
-            pl.axvline(tercthresh.loc[0.33][entry], color="blue", label="terciles")
-            pl.axvline(tercthresh.loc[0.66][entry], color="blue", label="_terciles")
-            
-
-            pl.set_xlabel("value")
-            pl.set_ylabel("frequency")
-            plt.legend()
-            pl.set_title("forecast error distribution")
-
-            
-            plt.suptitle("zone/location: {} \n{}\n".format(entry, _forecastid))
-            
-            plt.subplots_adjust(top=0.85, left=0.1, right=0.9, wspace=0.5, hspace=0.5)
-            plt.savefig(outfile)
-            plt.close()
-
 
             
 
