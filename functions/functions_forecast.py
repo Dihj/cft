@@ -337,7 +337,11 @@ def readPredictor():
         predictor=readNetcdf(predFile, predVar)
         if predictor is None:
             return
-
+        #predictor is xarray
+        predictor=predictor.sortby('lon').sortby("lat")
+        
+        predictor=predictor.sel(lat=slice(gl.config["predictorExtents"]["minLat"],gl.config["predictorExtents"]["maxLat"]), lon=slice(gl.config["predictorExtents"]["minLon"],gl.config["predictorExtents"]["maxLon"]) )
+        
         geodata=predictor[0,:]
         #preparing to convert xarray to pandas
         predictor=predictor.stack(location=("lat", "lon"))

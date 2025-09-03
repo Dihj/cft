@@ -1,5 +1,5 @@
 {
-    "rootDir": "/work/code/csc/cft/cem_demo",
+    "rootDir": "/work/code/csc/cft/test_aggregation",
     "predictorYear": 2025,
     "predictorMonth": "Jul",
     "fcstTargetSeas": "Dec-Feb",
@@ -9,21 +9,21 @@
     "predictorExtents": {
         "minLon": -180.0,
         "maxLon": 180.0,
-        "minLat": -60.0,
-        "maxLat": 60.0
+        "minLat": -20.0,
+        "maxLat": 30.0
     },
-    "predictorFileName": "/work/code/csc/cft/download_test/SST_ERSSTv5_IRIDL_mon_198107-202507.nc",
+    "predictorFileName": "/work/code/csc/cft/sadc_cft_current/example_data/SST_ERSSTv5_IRIDL_mon_198107-202507.nc",
     "predictorVar": "sst",
     "predictorCode": "SST",
     "crossval": "KF",
     "preproc": "PCR",
     "regression": "OLS",
-    "timeAggregation": "sum",
-    "predictandFileName": "/work/code/csc/cft/download_test/PRCP_CHIRPSp25_IRIDL_Dec-Feb_198112-202502.nc",
-    "predictandVar": "prcp",
+    "timeAggregation": "mean",
+    "predictandFileName": "/work/code/csc/cft/sadc_cft_current/example_data/pr_SADC_198101-202208.csv",
+    "predictandVar": "pr",
     "predictandCategory": "rainfall",
     "predictandMissingValue": "-9999",
-    "zonesFile": "/work/code/csc/cft/sadc_cft_current/example_data/Botswana.geojson",
+    "zonesFile": "/work/code/csc/cft/sadc_cft_current/example_data/sadc_djf_zones.geojson",
     "zonesAttribute": "ID",
     "zonesAggregate": true,
     "overlayFile": ""
