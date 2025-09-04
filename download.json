@@ -17,7 +17,7 @@
     "predictorMaxLat": "60",
     "predictorMinLon": "-180",
     "predictorMaxLon": "180",
-    "fcstpredCode": "SST_SPSv4_IRIDL",
+    "fcstpredCode": "SST_SEAS51_IRIDL",
     "fcstpredOverwrite": false,
     "fcstpredMinLat": "-60",
     "fcstpredMaxLat": "60",

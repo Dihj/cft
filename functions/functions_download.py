@@ -617,14 +617,15 @@ def downloadFcstPredictor():
         url=url.format(_forecastmon, firstyear, _forecastyear,leadtimestart,leadtimeend,south,north,west,east)
 
         if not available:
-            showMessage("These data could not be downloaded authomatically because it requires signing licence. Copy the url below, paste it to your browser and sign in the licence to download data manually. Remember - you will have to rename downloaded file.\n{}".format(url), "ERROR")
+            showMessage("The data were not downloaded. To download these data from IRIDL, these data require one to sign a license and to log onto IRI server. To do so - copy the url below, paste it to your browser and this will bring you to the website where you can log in and sign the license\n{}".format(url), "ERROR")
             return None
-            
+           
         response=downloadUrl(url)
 
         if response is None:
             showMessage("failed to download forecast data")
             return
+
         else:
 
             data_stream = io.BytesIO(response.content)

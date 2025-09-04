@@ -102,7 +102,8 @@ def computeModel():
         
         check=ff.checkPolyValidity(zonesVector)
         if not check:
-            sys.exit()
+            ff.showMessage("Vector file {} fails the validity check indicating that it is likely corrupted.".format(zonesVector), "ERROR")
+            return
         
         if not zonesVector[gl.config["zonesAttribute"]].is_unique:
             ff.showMessage("Selected vector attribute in regions map contains identical values. These values have to be unique for each zone, please check the zones vector file or the attribute you selected. Stopping early.", "ERROR")
@@ -172,7 +173,7 @@ def computeModel():
     if len(bad)>0:
         badnames=predictandHcst.loc[:,bad].columns
         for name in badnames:
-            showMessage("cannot calculate forecast for {} - too many similar values in predictand".format(name), "NONCRITICAL")
+            ff.showMessage("cannot calculate forecast for {} - too many similar values in predictand".format(name), "NONCRITICAL")
             
 
     #removing bad locations
@@ -200,11 +201,11 @@ def computeModel():
             regressor = ff.StdRegressor(regressor_name=gl.config['regression'], **args, **kwargs)
         else:
             #2-D predictor, no need to PCR or CCA
-            showMessage("2-D predictor, but no preprocessing requested. Please change pre-processor to either PCR or CCA", "ERROR")
+            ff.showMessage("2-D predictor, but no preprocessing requested. Please change pre-processor to either PCR or CCA", "ERROR")
             return
     else:
         if predictorHcst.shape[1]==1:
-            showMessage("1-D predictor, and neither PCR nor CCA are applicable. Please change pre-processor to 'No preprocessing'", "ERROR")
+            ff.showMessage("1-D predictor, and neither PCR nor CCA are applicable. Please change pre-processor to 'No preprocessing'", "ERROR")
             #2-D predictor, no need to PCR or CCA
             return    
     

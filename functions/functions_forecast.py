@@ -26,6 +26,7 @@ from sklearn.metrics import r2_score, mean_squared_error, roc_auc_score, mean_ab
 from sklearn.base import BaseEstimator, RegressorMixin
 
 from rasterstats import zonal_stats
+import rioxarray
 
 import matplotlib.colors as colors
 
@@ -188,24 +189,30 @@ def readPredictandCsv(csvfile):
         if ("Year" not in ds.keys()):
             msg="Data should contain column named Year. Data file {} does not. Please inspect the data file.".format(csvfile)
             showMessage(msg, "ERROR")
-            return                  
+            return None,None 
         if "ID" not in ds.keys():
             msg="Data should contain column named ID. Data file {} does not.Please inspect the data file.".format(csvfile)
             showMessage(msg, "ERROR")
-            return
+            return None,None
 
         nans=pd.isnull(ds.ID)
         if nans.any():
             badrows=np.where(nans)[0]+1
             badrows=",".join(list(badrows.astype(str)))
-            showMessage("CSV file contains rows {} with no data. Please edit the {} file with text editor (NOT Excel!) to remove these rows".format(badrows, obsFile), "ERROR")
-            return      
+            showMessage("CSV file contains rows {} with no data. Please edit the {} file with text editor (NOT Excel!) to remove these rows".format(badrows, csvfile), "ERROR")
+            return None,None
+
+        ds.ID=ds.ID.astype(str)
+
         locs=np.unique(ds.ID.astype(str))
         alldata=[]
         lats=[]
         lons=[]
+        print(locs)
         for name in locs:
+            print("name", name)
             sel=ds.ID==name
+            print("sel", sel)
             lats=lats+[np.unique(ds[sel].Lat.values)[0]]
             lons=lons+[np.unique(ds[sel].Lon.values)[0]]
             years=np.unique(ds[sel].Year.values)
@@ -218,7 +225,7 @@ def readPredictandCsv(csvfile):
             try:
                 dat=dat.astype(float)
             except:
-                showMessage("Data for {} contains entries that are of string (character) type which cannot be converted to numerical values. There should be no non-numeric characters in the data. Please edit the {} file so that it is formatted correctly".format(name, obsFile), "ERROR")
+                showMessage("Data for {} contains entries that are of string (character) type which cannot be converted to numerical values. There should be no non-numeric characters in the data. Please edit the {} file so that it is formatted correctly".format(name, csvfile), "ERROR")
                 return
             
             index=pd.date_range("{}-01-01".format(int(firstyear)),"{}-12-31".format(int(lastyear)),freq="ME")
@@ -259,11 +266,12 @@ def readPredictandCsv(csvfile):
         if latVar is None:
             msg="Data should contain values for Latitude of stations in one of the top three rows, marked by word 'Lat' in the first column of data. {} does not. Please inspect the data file.".format(csvfile)
             showMessage(msg, "ERROR")
-            return
+            return None,None
         
         if lonVar is None:
             msg="Data should contain values for longitude of stations in one of the top three rows, marked by word 'Lon' in the first column of data. {} does not. Please inspect the data file.".format(csvfile)
             showMessage(msg, "ERROR")
+            return None,None
             
     if gl.config["predictandMissingValue"] != "":
         dat[dat==gl.config["predictandMissingValue"]]=np.nan
@@ -294,7 +302,7 @@ def readPredictandCsv(csvfile):
 
     if gl.config["climEndYr"]>lastdatyear or gl.config["climStartYr"]<firstdatyear:
         showMessage("Climatological period {}-{} extends beyond period covered by data {}-{}".format(gl.config["climStartYr"],gl.config["climEndYr"],firstdatyear,lastdatyear), "ERROR")
-        return
+        return None,None
 
     #making sure dates start on the first of the month    
     newtime=pd.to_datetime([x.replace(day=1) for x in pd.to_datetime(dat.index)])
@@ -2627,6 +2635,17 @@ class CCARegressor(BaseEstimator, RegressorMixin):
 
 def writeOutput(_data, _outputfile):
     if gl.targetType=="grid":
+        _data=_data.rio.write_crs("epsg:4326") #adding crs
+        # Add CF-compliant attributes
+        _data["lat"].attrs = {
+            "standard_name": "latitude",
+            "units": "degrees_north"
+        }
+        _data["lon"].attrs = {
+            "standard_name": "longitude",
+            "units": "degrees_east"
+        }
+
         _data.to_netcdf(_outputfile)
     else:
         _data.to_csv(_outputfile)
