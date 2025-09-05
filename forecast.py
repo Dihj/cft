@@ -79,7 +79,7 @@ def computeModel():
     #reading predictors data
     predictor,geoDataPredictor=ff.readPredictor()
     if predictor is None:
-        showMessage("Predictor could not be read, stopping early.", "ERROR")
+        ff.showMessage("Predictor could not be read, stopping early.", "ERROR")
         return
 
     #reading predictand data - this will calculate seasonal from monthly if needed.

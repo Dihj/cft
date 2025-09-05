@@ -321,12 +321,12 @@ def readPredictor():
     
     if predFile=="":
         showMessage("predictor file not defined","ERROR")
-        return
+        return None,None
 
     showMessage("reading predictor from {}...".format(predFile), "INFO")
     if not os.path.exists(predFile):
         showMessage("file does not exist","ERROR")
-        return
+        return None,None
 
     showMessage("\tfile exists, reading...")
 
@@ -335,7 +335,7 @@ def readPredictor():
     ext=predFile.split(".")[-1]
     if ext not in ["csv", "nc"]:
         showMessage("only .csv and .nc files accepted, got {}".format(ext),"ERROR")
-        return
+        return None,None
 
     srcMonth=month2int(gl.config['predictorMonth'])
 
@@ -344,7 +344,7 @@ def readPredictor():
     if ext=="nc":
         predictor=readNetcdf(predFile, predVar)
         if predictor is None:
-            return
+            return None,None
         #predictor is xarray
         predictor=predictor.sortby('lon').sortby("lat")
         
@@ -369,11 +369,11 @@ def readPredictor():
     #making sure requested month is in the data
     if not srcMonth in predictor.index.month:
         showMessage("file does not contain data for requested month ({})".format(gl.config['predictorMonth']),"ERROR")
-        return
+        return None,None
     
     predictor=predictor[predictor.index.month==srcMonth]    
     if predictor is None:
-        return
+        return None,None
     
    
     datdates=predictor.index
@@ -388,12 +388,12 @@ def readPredictor():
     #check if covers climatological period
     if gl.config["climEndYr"]>lastdatyear or gl.config["climStartYr"]<firstdatyear:
         showMessage("Climatological period {}-{} extends beyond period covered by data {}-{}".format(gl.config["climStartYr"],gl.config["climEndYr"],firstdatyear,lastdatyear), "ERROR")
-        return
+        return None,None
     
     #check if value for the forecast year is in data
     if not gl.predictorDate in datdates:
         showMessage("Predictor data do not include forecast date {}".format(gl.predictorDate.strftime("%b %Y")), "ERROR")
-        return
+        return None,None
     predictor=predictor.astype("float")
     
     showMessage("done\n", "INFO")
@@ -500,7 +500,7 @@ def readNetcdf(ncfile, ncvar):
         return
     
     #aligning coordinate names    
-    coordsubs={"lon":["longitude","X","Longitude","Lon"], "lat":["latitude","Y","Latitude","Lat"], "time":["T"]}
+    coordsubs={"lon":["longitude","X","Longitude","Lon"], "lat":["latitude","Y","Latitude","Lat"], "time":["T","S"]}
     for key in coordsubs.keys():
         for x in coordsubs[key]:
             if x in ds.coords.keys():
